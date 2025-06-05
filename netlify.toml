@@ -1,0 +1,39 @@
+[build]
+  # Directory to publish (dist for Vite)
+  publish = "dist"
+  
+  # Build command
+  command = "npm run build"
+
+[[redirects]]
+  # Handle client-side routing
+  # All routes should redirect to index.html to let React Router handle them
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  # Cache static assets
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  # Cache CSS and JS files
+  for = "*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  # Security headers for the main site
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin" 
