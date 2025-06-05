@@ -1,0 +1,40 @@
+{
+  "name": "fittrack-ai",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AI-powered fitness and nutrition tracking app for achieving gym physique with defined abs and strong shoulders. Features workout logging, macro tracking, and progress visualization.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "date-fns": "^2.30.0",
+    "firebase": "^10.7.1",
+    "lucide-react": "^0.294.0",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.57.0",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.27.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.11.1",
+    "@types/react": "^18.3.10",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^9.11.1",
+    "eslint-plugin-react": "^7.37.0",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "eslint-plugin-react-refresh": "^0.4.12",
+    "globals": "^15.9.0",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "vite": "^5.4.8"
+  }
+}
