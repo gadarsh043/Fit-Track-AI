@@ -34,6 +34,7 @@
     "eslint-plugin-react-refresh": "^0.4.12",
     "globals": "^15.9.0",
     "postcss": "^8.4.32",
+    "sass-embedded": "^1.89.1",
     "tailwindcss": "^3.3.6",
     "vite": "^5.4.8"
   }

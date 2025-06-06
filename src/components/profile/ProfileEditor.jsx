@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { LogOut, Edit, Save, X, User } from 'lucide-react';
+import { Edit, Save, X, User } from 'lucide-react';
 import PropTypes from 'prop-types';
 import toast from 'react-hot-toast';
 
-const ProfileEditor = ({ userProfile, onProfileUpdate, userId, onLogout }) => {
+const ProfileEditor = ({ userProfile, onProfileUpdate, userId }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -416,18 +416,6 @@ const ProfileEditor = ({ userProfile, onProfileUpdate, userId, onLogout }) => {
           </div>
         </form>
       </div>
-
-      {/* Actions */}
-      <div className="card max-w-4xl">
-        <h4 className="text-lg font-semibold text-gray-900 mb-4">Account Actions</h4>
-        <button
-          onClick={onLogout}
-          className="btn-secondary flex items-center justify-center"
-        >
-          <LogOut className="h-5 w-5 mr-2" />
-          Sign Out
-        </button>
-      </div>
     </div>
   );
 };
@@ -435,8 +423,7 @@ const ProfileEditor = ({ userProfile, onProfileUpdate, userId, onLogout }) => {
 ProfileEditor.propTypes = {
   userProfile: PropTypes.object,
   onProfileUpdate: PropTypes.func.isRequired,
-  userId: PropTypes.string.isRequired,
-  onLogout: PropTypes.func.isRequired
+  userId: PropTypes.string.isRequired
 };
 
 export default ProfileEditor; 

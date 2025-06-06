@@ -73,6 +73,27 @@ function Policy() {
               </div>
             </section>
 
+            {/* Development & Infrastructure */}
+            <section>
+              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Development & Infrastructure</h2>
+              <div className="bg-green-50 p-6 rounded-lg">
+                <h4 className="font-semibold mb-4">In-House Development</h4>
+                <p className="mb-4">✅ <strong>All business logic, features, and application code are developed 100% in-house</strong> by our FitTrack AI development team. No third-party development services are used.</p>
+                
+                <h4 className="font-semibold mt-6 mb-4">Infrastructure Services (Third-Party)</h4>
+                <p className="mb-3">We utilize industry-standard infrastructure services for hosting and data management:</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li><strong>Firebase (Google):</strong> Database hosting and user authentication infrastructure</li>
+                  <li><strong>Netlify:</strong> Web application hosting and deployment platform</li>
+                  <li><strong>GitHub:</strong> Code repository and version control system</li>
+                </ul>
+                
+                <div className="mt-4 p-4 bg-white rounded border-l-4 border-green-500">
+                  <p className="text-sm"><strong>Note:</strong> These are infrastructure-as-a-service platforms, not development or business logic services. All application features, algorithms, and business processes are proprietary and developed in-house.</p>
+                </div>
+              </div>
+            </section>
+
             {/* Contact Section */}
             <section>
               <h2 className="text-2xl font-semibold text-gray-900 mb-4">Contact Us</h2>

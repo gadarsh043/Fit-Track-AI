@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   TrendingUp, 
@@ -9,7 +9,9 @@ import {
   User,
   X,
   Brain,
-  Calendar
+  Calendar,
+  LogOut,
+  Menu
 } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,6 +43,9 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     water: 0,
     weight: null
   });
+  
+  // Add ref to prevent multiple sync operations
+  const syncInProgress = useRef(false);
   
   // Fix timezone issues by ensuring we use local date
   const today = useMemo(() => {
@@ -154,12 +159,19 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
 
   // Function to sync weekly schedule back to workout/nutrition data
   const syncScheduleToData = useCallback(async () => {
+    if (!user?.uid || !todayData || syncInProgress.current) return; // Early return if no user, data, or sync in progress
+    
+    syncInProgress.current = true; // Set sync in progress
+    
     const todayName = format(today, 'EEEE');
     const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     
     try {
       const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
-      if (!savedSchedule) return;
+      if (!savedSchedule) {
+        syncInProgress.current = false;
+        return;
+      }
       
       const weeklyTasks = JSON.parse(savedSchedule);
       const todayTasks = weeklyTasks[todayName] || [];
@@ -341,6 +353,8 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       }
     } catch (error) {
       console.error('Error syncing schedule to data:', error);
+    } finally {
+      syncInProgress.current = false; // Reset sync in progress
     }
   }, [today, user?.uid, todayData.workouts, todayData.meals]);
 
@@ -401,20 +415,30 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         weeklyTasks[todayName] = [];
       }
       
-      // Remove existing auto-synced workout tasks for today (but preserve manually created ones)
+      // Get existing auto-synced workout tasks
+      const existingAutoSyncTasks = weeklyTasks[todayName].filter(task => 
+        task.category === 'Workout' && task.id.startsWith('workout_')
+      );
+      
+      // Remove ALL auto-synced workout tasks for today (but preserve manually created ones)
       weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => 
         task.category !== 'Workout' || !task.id.startsWith('workout_')
       );
       
       // Add new workout tasks (this handles both additions and deletions)
       workouts.forEach((workout, index) => {
+        // Try to find existing task with same exercise name to preserve ID
+        const existingTask = existingAutoSyncTasks.find(task => 
+          task.title === workout.exercise
+        );
+        
         weeklyTasks[todayName].push({
-          id: `workout_${Date.now()}_${index}`,
+          id: existingTask ? existingTask.id : `workout_${Date.now()}_${index}`, // Preserve existing ID or create new
           title: workout.exercise,
           category: 'Workout',
           description: `${workout.sets} sets × ${workout.reps} reps`,
           completed: workout.completed || false, // Sync completion status
-          createdAt: new Date().toISOString()
+          createdAt: existingTask ? existingTask.createdAt : new Date().toISOString() // Preserve creation time
         });
       });
       
@@ -441,6 +465,11 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         weeklyTasks[todayName] = [];
       }
       
+      // Get existing auto-synced meal tasks
+      const existingAutoSyncTasks = weeklyTasks[todayName].filter(task => 
+        task.category === 'Nutrition' && task.id.startsWith('meal_')
+      );
+      
       // Remove existing auto-synced nutrition tasks for today (but preserve manually created ones)
       weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => 
         task.category !== 'Nutrition' || !task.id.startsWith('meal_')
@@ -448,13 +477,18 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       
       // Add new meal tasks (this handles both additions and deletions)
       meals.forEach((meal, index) => {
+        // Try to find existing task with same food name to preserve ID
+        const existingTask = existingAutoSyncTasks.find(task => 
+          task.title === (meal.food || meal.name)
+        );
+        
         weeklyTasks[todayName].push({
-          id: `meal_${Date.now()}_${index}`,
+          id: existingTask ? existingTask.id : `meal_${Date.now()}_${index}`, // Preserve existing ID or create new
           title: meal.food || meal.name,
           category: 'Nutrition',
           description: `${meal.calories} cal (${meal.mealType})`,
           completed: meal.completed || false, // Sync completion status
-          createdAt: new Date().toISOString(),
+          createdAt: existingTask ? existingTask.createdAt : new Date().toISOString(), // Preserve creation time
           // Store meal data for reverse sync
           mealData: {
             id: meal.id,
@@ -484,20 +518,9 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
   ];
 
-  // Run sync after all functions are defined
-  useEffect(() => {
-    if (user && todayData && syncScheduleToData) {
-      const timeoutId = setTimeout(() => {
-        syncScheduleToData();
-      }, 200);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [user, todayData.workouts?.length, todayData.meals?.length, 
-      // Also watch for completion status changes
-      todayData.workouts?.map(w => w.completed).join(','),
-      todayData.meals?.map(m => m.completed).join(',')
-  ]);
+  // Note: Removed automatic sync useEffect to prevent workout glitching
+  // Sync is now only triggered by user actions (manual button clicks, tab changes, etc.)
+  // This prevents the infinite loop that occurred when completion status changed with single workout
 
   const StatCard = ({ title, value, subtitle, icon: Icon, color = 'blue' }) => (
     <div className="card">
@@ -612,17 +635,26 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
           <div>
             <div className="flex items-center justify-between mb-6">
               <h1 className="text-3xl font-bold text-gray-900">Workout Tracking</h1>
-              <button
-                onClick={() => {
-                  // Refresh data from Firebase
-                  loadTodayData();
-                  toast.success('Data refreshed!');
-                }}
-                className="btn-secondary text-sm"
-                title="Refresh workout data"
-              >
-                🔄 Refresh
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => syncScheduleToData()}
+                  className="btn-secondary text-sm"
+                  title="Sync with weekly schedule"
+                >
+                  🔄 Sync Schedule
+                </button>
+                <button
+                  onClick={() => {
+                    // Refresh data from Firebase
+                    loadTodayData();
+                    toast.success('Data refreshed!');
+                  }}
+                  className="btn-secondary text-sm"
+                  title="Refresh workout data"
+                >
+                  📁 Refresh Data
+                </button>
+              </div>
             </div>
             <WorkoutLogger
               workouts={todayData.workouts || []}
@@ -636,17 +668,26 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
           <div>
             <div className="flex items-center justify-between mb-6">
               <h1 className="text-3xl font-bold text-gray-900">Nutrition Tracking</h1>
-              <button
-                onClick={() => {
-                  // Refresh data from Firebase
-                  loadTodayData();
-                  toast.success('Data refreshed!');
-                }}
-                className="btn-secondary text-sm"
-                title="Refresh nutrition data"
-              >
-                🔄 Refresh
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => syncScheduleToData()}
+                  className="btn-secondary text-sm"
+                  title="Sync with weekly schedule"
+                >
+                  🔄 Sync Schedule
+                </button>
+                <button
+                  onClick={() => {
+                    // Refresh data from Firebase
+                    loadTodayData();
+                    toast.success('Data refreshed!');
+                  }}
+                  className="btn-secondary text-sm"
+                  title="Refresh nutrition data"
+                >
+                  📁 Refresh Data
+                </button>
+              </div>
             </div>
             <NutritionLogger
               meals={todayData.meals || []}
@@ -722,7 +763,6 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
               userProfile={userProfile} 
               onProfileUpdate={loadUserData} 
               userId={user?.uid}
-              onLogout={logout}
             />
           </div>
         );
@@ -743,12 +783,21 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
           >
             FitTrack AI
           </button>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-6 w-6" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={logout}
+              className="hidden lg:block p-2 text-gray-400 hover:text-red-600 transition-colors"
+              title="Sign Out"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
         </div>
         
         <nav className="mt-6">
@@ -775,10 +824,16 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
             onClick={() => setSidebarOpen(true)}
             className="text-gray-400 hover:text-gray-600"
           >
-            <X className="h-6 w-6" />
+            <Menu className="h-6 w-6" />
           </button>
           <h1 className="text-lg font-semibold">FitTrack AI</h1>
-          <div className="w-6" /> {/* Spacer */}
+          <button
+            onClick={logout}
+            className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+            title="Sign Out"
+          >
+            <LogOut className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Content */}
