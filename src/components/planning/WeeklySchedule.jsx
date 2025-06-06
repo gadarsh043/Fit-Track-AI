@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Copy, Clipboard, Check, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, X, Copy, Clipboard, Check, Calendar, ChevronLeft, ChevronRight, ArrowRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import PropTypes from 'prop-types';
 import { format, addDays, startOfWeek, addWeeks, subWeeks } from 'date-fns';
@@ -10,9 +10,12 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
   const [weeklyTasks, setWeeklyTasks] = useState({});
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null); // Track selected category for conditional modal
   const [copiedWeek, setCopiedWeek] = useState(null);
+  const [showMoveDropdown, setShowMoveDropdown] = useState(null); // taskId of task being moved
+  const [modalType, setModalType] = useState('basic'); // 'basic', 'workout', 'nutrition'
   
-  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, formState: { errors }, getValues, setValue } = useForm();
 
   const daysOfWeek = [
     'Monday', 'Tuesday', 'Wednesday', 'Thursday', 
@@ -30,9 +33,106 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
     'Other'
   ];
 
+  // Workout data from WorkoutLogger
+  const workoutTypes = [
+    'Push Day (Chest, Shoulders, Triceps)',
+    'Pull Day (Back, Biceps)',
+    'Leg Day',
+    'Upper Body',
+    'Lower Body',
+    'Full Body',
+    'Cardio',
+    'Swimming',
+    'Recovery/Stretching'
+  ];
+
+  const machines = [
+    'Barbell', 'Dumbbell', 'Cable Machine', 'Smith Machine',
+    'Leg Press Machine', 'Lat Pulldown Machine', 'Seated Row Machine',
+    'Chest Press Machine', 'Shoulder Press Machine', 'Leg Curl Machine',
+    'Leg Extension Machine', 'Calf Raise Machine', 'Free Weights', 'Bodyweight'
+  ];
+
+  // Nutrition data from NutritionLogger
+  const mealTypes = [
+    'Breakfast',
+    'Mid-Morning Snack',
+    'Lunch',
+    'Afternoon Snack',
+    'Pre-Workout',
+    'Post-Workout',
+    'Dinner',
+    'Evening Snack'
+  ];
+
+  const commonFoods = {
+    'Protein Sources': {
+      'Chicken Breast (100g)': { protein: 31, carbs: 0, fats: 3.6, calories: 165 },
+      'Eggs (1 large)': { protein: 6, carbs: 0.6, fats: 5, calories: 70 },
+      'Greek Yogurt (100g)': { protein: 10, carbs: 4, fats: 0, calories: 59 },
+      'Tuna (100g)': { protein: 30, carbs: 0, fats: 1, calories: 132 },
+      'Salmon (100g)': { protein: 25, carbs: 0, fats: 12, calories: 208 },
+      'Protein Powder (1 scoop)': { protein: 24, carbs: 3, fats: 1, calories: 120 },
+      'Cottage Cheese (100g)': { protein: 11, carbs: 3.4, fats: 4.3, calories: 98 }
+    },
+    'Carbohydrates': {
+      'Oats (100g)': { protein: 17, carbs: 66, fats: 7, calories: 389 },
+      'Brown Rice (100g cooked)': { protein: 2.6, carbs: 23, fats: 0.9, calories: 111 },
+      'Sweet Potato (100g)': { protein: 2, carbs: 20, fats: 0.1, calories: 86 },
+      'Banana (1 medium)': { protein: 1.3, carbs: 27, fats: 0.3, calories: 105 },
+      'White Rice (100g cooked)': { protein: 2.7, carbs: 28, fats: 0.3, calories: 130 },
+      'Pasta (100g cooked)': { protein: 5, carbs: 25, fats: 0.9, calories: 131 }
+    },
+    'Healthy Fats': {
+      'Almonds (28g)': { protein: 6, carbs: 6, fats: 14, calories: 164 },
+      'Avocado (100g)': { protein: 2, carbs: 9, fats: 15, calories: 160 },
+      'Olive Oil (1 tbsp)': { protein: 0, carbs: 0, fats: 14, calories: 119 },
+      'Peanut Butter (2 tbsp)': { protein: 8, carbs: 6, fats: 16, calories: 188 },
+      'Walnuts (28g)': { protein: 4, carbs: 4, fats: 18, calories: 185 }
+    },
+    'Supplements': {
+      'Creatine (5g)': { protein: 0, carbs: 0, fats: 0, calories: 0 },
+      'Whey Protein (1 scoop)': { protein: 24, carbs: 3, fats: 1, calories: 120 },
+      'Casein Protein (1 scoop)': { protein: 24, carbs: 3, fats: 1, calories: 120 },
+      'BCAA (1 serving)': { protein: 5, carbs: 0, fats: 0, calories: 20 }
+    },
+    'Dairy': {
+      'Milk (250ml)': { protein: 8, carbs: 12, fats: 8, calories: 150 },
+      'Low-fat Milk (250ml)': { protein: 8, carbs: 12, fats: 2.5, calories: 102 },
+      'Cheese (28g)': { protein: 7, carbs: 1, fats: 9, calories: 113 }
+    }
+  };
+
   useEffect(() => {
     loadWeeklySchedule();
   }, [currentWeek, userId]);
+
+  // Close move dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMoveDropdown && !event.target.closest('.relative')) {
+        setShowMoveDropdown(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showMoveDropdown]);
+
+  // Auto-fill nutrition when food is selected (from NutritionLogger)
+  const handleFoodChange = (food) => {
+    // Find the food in common foods
+    for (const category of Object.values(commonFoods)) {
+      if (category[food]) {
+        const nutrition = category[food];
+        setValue('protein', nutrition.protein);
+        setValue('carbs', nutrition.carbs);
+        setValue('fats', nutrition.fats);
+        setValue('calories', nutrition.calories);
+        break;
+      }
+    }
+  };
 
   const loadWeeklySchedule = async () => {
     // Mock data structure - replace with actual Firebase call
@@ -49,20 +149,78 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
   const saveWeeklySchedule = async (schedule) => {
     const weekKey = format(currentWeek, 'yyyy-MM-dd');
     localStorage.setItem(`schedule_${userId}_${weekKey}`, JSON.stringify(schedule));
+    
+    // Always trigger sync with workout/nutrition data
     if (onUpdateSchedule) {
-      onUpdateSchedule(schedule);
+      // Add a small delay to ensure localStorage is updated
+      setTimeout(() => {
+        onUpdateSchedule();
+      }, 50);
     }
   };
 
   const addTask = (data) => {
-    const newTask = {
+    let newTask = {
       id: Date.now().toString(),
-      title: data.title,
-      category: data.category,
-      description: data.description || '',
+      category: selectedCategory || data.category,
       completed: false,
       createdAt: new Date().toISOString()
     };
+
+    // Handle different modal types
+    if (modalType === 'workout') {
+      newTask = {
+        ...newTask,
+        title: data.exercise || data.title,
+        category: 'Workout',
+        type: data.type,
+        exercise: data.exercise,
+        sets: data.sets ? parseInt(data.sets) : null,
+        reps: data.reps ? parseInt(data.reps) : null,
+        weight: data.weight ? parseFloat(data.weight) : null,
+        machine: data.machine,
+        duration: data.duration ? parseInt(data.duration) : null,
+        notes: data.notes || '',
+        description: data.sets && data.reps ? `${data.sets} sets × ${data.reps} reps` : data.notes
+      };
+    } else if (modalType === 'nutrition') {
+      newTask = {
+        ...newTask,
+        title: data.food || data.title,
+        category: 'Nutrition',
+        food: data.food,
+        quantity: data.quantity ? parseFloat(data.quantity) : null,
+        unit: data.unit,
+        mealType: data.mealType,
+        protein: data.protein ? parseFloat(data.protein) : 0,
+        carbs: data.carbs ? parseFloat(data.carbs) : 0,
+        fats: data.fats ? parseFloat(data.fats) : 0,
+        calories: data.calories ? parseFloat(data.calories) : 0,
+        notes: data.notes || '',
+        description: data.calories ? `${data.calories} calories` : data.notes
+      };
+    } else {
+      // Basic task
+      newTask = {
+        ...newTask,
+        title: data.title,
+        description: data.description || ''
+      };
+
+      // For workout tasks, add additional workout-specific fields
+      if (selectedCategory === 'Workout') {
+        newTask.sets = data.sets ? parseInt(data.sets) : null;
+        newTask.reps = data.reps ? parseInt(data.reps) : null;
+        newTask.weight = data.weight ? parseFloat(data.weight) : null;
+        newTask.description = data.sets && data.reps ? `${data.sets} sets × ${data.reps} reps` : data.description;
+      }
+
+      // For nutrition tasks, add calorie information
+      if (selectedCategory === 'Nutrition') {
+        newTask.calories = data.calories ? parseInt(data.calories) : null;
+        newTask.description = data.calories ? `${data.calories} calories` : data.description;
+      }
+    }
 
     const updatedTasks = {
       ...weeklyTasks,
@@ -74,6 +232,8 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
     reset();
     setIsAddingTask(false);
     setSelectedDay(null);
+    setSelectedCategory(null);
+    setModalType('basic');
     toast.success('Task added successfully!');
   };
 
@@ -87,10 +247,25 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
 
     setWeeklyTasks(updatedTasks);
     saveWeeklySchedule(updatedTasks);
+    
+    // Trigger sync to update workout/nutrition completion status
+    if (onUpdateSchedule) {
+      setTimeout(() => {
+        onUpdateSchedule();
+      }, 50);
+    }
+    
     toast.success('Task updated!');
   };
 
   const removeTask = (day, taskId) => {
+    // Check if this is an auto-synced task that needs special handling
+    const taskToRemove = weeklyTasks[day]?.find(task => task.id === taskId);
+    const isAutoSyncedTask = taskToRemove && (
+      taskToRemove.id.startsWith('workout_') || 
+      taskToRemove.id.startsWith('meal_')
+    );
+    
     const updatedTasks = {
       ...weeklyTasks,
       [day]: weeklyTasks[day].filter(task => task.id !== taskId)
@@ -98,7 +273,73 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
 
     setWeeklyTasks(updatedTasks);
     saveWeeklySchedule(updatedTasks);
+    
+    // If this was an auto-synced task, trigger sync to update workout/nutrition data
+    if (isAutoSyncedTask && onUpdateSchedule) {
+      setTimeout(() => {
+        onUpdateSchedule();
+      }, 50);
+    }
+    
     toast.success('Task removed');
+  };
+
+  const moveTask = (fromDay, taskId, toDay) => {
+    if (fromDay === toDay) {
+      setShowMoveDropdown(null);
+      return;
+    }
+
+    const taskToMove = weeklyTasks[fromDay]?.find(task => task.id === taskId);
+    if (!taskToMove) return;
+
+    // Check if this is an auto-synced task that needs special handling
+    const isAutoSyncedTask = taskToMove && (
+      taskToMove.id.startsWith('workout_') || 
+      taskToMove.id.startsWith('meal_')
+    );
+
+    const updatedTasks = {
+      ...weeklyTasks,
+      [fromDay]: weeklyTasks[fromDay].filter(task => task.id !== taskId),
+      [toDay]: [...(weeklyTasks[toDay] || []), taskToMove]
+    };
+
+    setWeeklyTasks(updatedTasks);
+    saveWeeklySchedule(updatedTasks);
+    setShowMoveDropdown(null);
+    
+    // If this was an auto-synced task, trigger sync to update workout/nutrition data
+    if (isAutoSyncedTask && onUpdateSchedule) {
+      setTimeout(() => {
+        onUpdateSchedule();
+      }, 50);
+    }
+    
+    toast.success(`Task moved to ${toDay}`);
+  };
+
+  const reorderTask = (day, taskId, direction) => {
+    const dayTasks = weeklyTasks[day] || [];
+    const taskIndex = dayTasks.findIndex(task => task.id === taskId);
+    
+    if (taskIndex === -1) return;
+    
+    const newIndex = direction === 'up' ? taskIndex - 1 : taskIndex + 1;
+    
+    if (newIndex < 0 || newIndex >= dayTasks.length) return;
+    
+    const reorderedTasks = [...dayTasks];
+    [reorderedTasks[taskIndex], reorderedTasks[newIndex]] = [reorderedTasks[newIndex], reorderedTasks[taskIndex]];
+    
+    const updatedTasks = {
+      ...weeklyTasks,
+      [day]: reorderedTasks
+    };
+    
+    setWeeklyTasks(updatedTasks);
+    saveWeeklySchedule(updatedTasks);
+    toast.success(`Task moved ${direction}`);
   };
 
   const copyCurrentWeek = () => {
@@ -225,108 +466,352 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
         </div>
       </div>
 
-      {/* Daily Schedule Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-7 gap-4">
-        {daysOfWeek.map((day, index) => {
-          const dayTasks = getTasksForDay(day);
-          const dayDate = addDays(currentWeek, index);
-          const todayHighlight = isTodayDate(dayDate);
-          
-          return (
-            <div key={day} className={`card ${todayHighlight ? 'ring-2 ring-primary-500' : ''}`}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h4 className="font-semibold text-gray-900">{day}</h4>
-                  <p className="text-sm text-gray-600">{format(dayDate, 'MMM d')}</p>
-                  {todayHighlight && (
-                    <p className="text-xs text-primary-600 font-medium">Today</p>
-                  )}
+      {/* Daily Schedule Grid - Redesigned */}
+      <div className="card">
+        <div className="grid grid-cols-7 gap-2 mb-4">
+          {/* Day Headers */}
+          {daysOfWeek.map((day, index) => {
+            const dayDate = addDays(currentWeek, index);
+            const todayHighlight = isTodayDate(dayDate);
+            
+            return (
+              <div 
+                key={day} 
+                className={`text-center p-3 rounded-lg border-2 transition-all ${
+                  todayHighlight 
+                    ? 'bg-primary-50 border-primary-200 text-primary-900' 
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+              >
+                <h4 className="font-bold text-sm">{day}</h4>
+                <p className="text-xs text-gray-600">{format(dayDate, 'MMM d')}</p>
+                {todayHighlight && (
+                  <p className="text-xs text-primary-600 font-bold">Today</p>
+                )}
+                <div className="mt-2 relative">
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedDay(day);
+                        setModalType(e.target.value);
+                        setSelectedCategory(e.target.value === 'workout' ? 'Workout' : e.target.value === 'nutrition' ? 'Nutrition' : 'Other');
+                        setIsAddingTask(true);
+                        e.target.value = ''; // Reset dropdown
+                      }
+                    }}
+                    className="w-full py-1 px-2 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                  >
+                    <option value="">+ Add Task</option>
+                    <option value="basic">📝 Basic Task</option>
+                    <option value="workout">💪 Workout</option>
+                    <option value="nutrition">🍎 Nutrition</option>
+                  </select>
                 </div>
-                
-                <button
-                  onClick={() => {
-                    setSelectedDay(day);
-                    setIsAddingTask(true);
-                  }}
-                  className="p-1 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
               </div>
+            );
+          })}
+        </div>
 
-              <div className="space-y-2">
-                {dayTasks.length === 0 ? (
-                  <p className="text-sm text-gray-500 italic">No tasks planned</p>
-                ) : (
-                  dayTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className={`p-2 rounded-lg border ${
-                        task.completed 
-                          ? 'bg-green-50 border-green-200' 
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start space-x-2 flex-1">
-                          <button
-                            onClick={() => toggleTask(day, task.id)}
-                            className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center ${
-                              task.completed
-                                ? 'bg-green-500 border-green-500 text-white'
-                                : 'border-gray-300 hover:border-green-500'
+        {/* Tasks Layout - Responsive Design */}
+        <div className="space-y-6">
+          {/* Desktop View - Table Layout */}
+          <div className="hidden lg:block">
+            <div className="grid grid-cols-7 gap-2">
+              {daysOfWeek.map((day) => {
+                const dayTasks = getTasksForDay(day);
+                
+                return (
+                  <div key={day} className="min-h-[200px] space-y-1">
+                    {dayTasks.length === 0 ? (
+                      <div className="h-16 flex items-center justify-center text-gray-400 text-xs italic border-2 border-dashed border-gray-200 rounded-lg">
+                        No tasks
+                      </div>
+                    ) : (
+                      dayTasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className={`group p-2 rounded-md border text-xs transition-all hover:shadow-sm ${
+                            task.completed 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-white border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-1">
+                            <button
+                              onClick={() => toggleTask(day, task.id)}
+                              className={`w-3 h-3 rounded border flex items-center justify-center flex-shrink-0 ${
+                                task.completed
+                                  ? 'bg-green-500 border-green-500 text-white'
+                                  : 'border-gray-300 hover:border-green-500'
+                              }`}
+                            >
+                              {task.completed && <Check className="h-2 w-2" />}
+                            </button>
+                            
+                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+                              <div className="relative">
+                                <button
+                                  onClick={() => setShowMoveDropdown(showMoveDropdown === task.id ? null : task.id)}
+                                  className="text-gray-400 hover:text-blue-500"
+                                  title="Move task"
+                                >
+                                  <ArrowRight className="h-3 w-3" />
+                                </button>
+                                
+                                {showMoveDropdown === task.id && (
+                                  <div className="absolute right-0 top-4 z-50 bg-white border border-gray-200 rounded-md shadow-lg min-w-[120px]">
+                                    <div className="py-1">
+                                      <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100">
+                                        Move to:
+                                      </div>
+                                      {daysOfWeek.filter(d => d !== day).map((targetDay) => (
+                                        <button
+                                          key={targetDay}
+                                          onClick={() => moveTask(day, task.id, targetDay)}
+                                          className="w-full text-left px-3 py-1 text-xs hover:bg-gray-50"
+                                        >
+                                          {targetDay}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <button
+                                onClick={() => reorderTask(day, task.id, 'up')}
+                                className="text-gray-400 hover:text-blue-500"
+                                title="Move up"
+                                disabled={dayTasks.indexOf(task) === 0}
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </button>
+                              
+                              <button
+                                onClick={() => reorderTask(day, task.id, 'down')}
+                                className="text-gray-400 hover:text-blue-500"
+                                title="Move down"
+                                disabled={dayTasks.indexOf(task) === dayTasks.length - 1}
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
+                              
+                              <button
+                                onClick={() => removeTask(day, task.id)}
+                                className="text-gray-400 hover:text-red-500"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <p className={`font-medium mb-1 leading-tight ${
+                            task.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                          }`}>
+                            {task.title}
+                          </p>
+                          
+                          <span className={`inline-block px-1.5 py-0.5 text-xs rounded ${
+                            getCategoryColor(task.category)
+                          }`}>
+                            {task.category}
+                          </span>
+                          
+                          {task.description && (
+                            <p className="text-xs text-gray-600 mt-1 leading-tight">{task.description}</p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Mobile/Tablet View - Accordion Style */}
+          <div className="lg:hidden space-y-3">
+            {daysOfWeek.map((day, index) => {
+              const dayTasks = getTasksForDay(day);
+              const dayDate = addDays(currentWeek, index);
+              const todayHighlight = isTodayDate(dayDate);
+              
+              return (
+                <div 
+                  key={day} 
+                  className={`border rounded-lg overflow-hidden ${
+                    todayHighlight ? 'border-primary-300' : 'border-gray-200'
+                  }`}
+                >
+                  {/* Day Header */}
+                  <div className={`p-3 flex items-center justify-between ${
+                    todayHighlight ? 'bg-primary-50' : 'bg-gray-50'
+                  }`}>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{day}</h4>
+                      <p className="text-sm text-gray-600">{format(dayDate, 'MMM d')}</p>
+                      {todayHighlight && (
+                        <p className="text-xs text-primary-600 font-medium">Today</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500">
+                        {dayTasks.filter(t => t.completed).length}/{dayTasks.length} completed
+                      </span>
+                      <select
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setSelectedDay(day);
+                            setModalType(e.target.value);
+                            setSelectedCategory(e.target.value === 'workout' ? 'Workout' : e.target.value === 'nutrition' ? 'Nutrition' : 'Other');
+                            setIsAddingTask(true);
+                            e.target.value = ''; // Reset dropdown
+                          }
+                        }}
+                        className="p-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
+                      >
+                        <option value="">+</option>
+                        <option value="basic">📝 Basic</option>
+                        <option value="workout">💪 Workout</option>
+                        <option value="nutrition">🍎 Nutrition</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Tasks List */}
+                  <div className="p-3 space-y-2">
+                    {dayTasks.length === 0 ? (
+                      <p className="text-sm text-gray-500 italic text-center py-4">No tasks planned</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {dayTasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className={`p-2 rounded-lg border ${
+                              task.completed 
+                                ? 'bg-green-50 border-green-200' 
+                                : 'bg-gray-50 border-gray-200'
                             }`}
                           >
-                            {task.completed && <Check className="h-3 w-3" />}
-                          </button>
-                          
-                          <div className="flex-1">
-                            <p className={`text-sm font-medium ${
-                              task.completed ? 'line-through text-gray-500' : 'text-gray-900'
-                            }`}>
-                              {task.title}
-                            </p>
-                            
-                            <div className="flex items-center space-x-2">
-                              <span className={`px-2 py-1 text-xs rounded ${
-                                getCategoryColor(task.category)
-                              }`}>
-                                {task.category}
-                              </span>
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start space-x-2 flex-1">
+                                <button
+                                  onClick={() => toggleTask(day, task.id)}
+                                  className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center ${
+                                    task.completed
+                                      ? 'bg-green-500 border-green-500 text-white'
+                                      : 'border-gray-300 hover:border-green-500'
+                                  }`}
+                                >
+                                  {task.completed && <Check className="h-3 w-3" />}
+                                </button>
+                                
+                                <div className="flex-1">
+                                  <p className={`text-sm font-medium ${
+                                    task.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                                  }`}>
+                                    {task.title}
+                                  </p>
+                                  
+                                  <div className="flex items-center space-x-2 mt-1">
+                                    <span className={`px-2 py-1 text-xs rounded ${
+                                      getCategoryColor(task.category)
+                                    }`}>
+                                      {task.category}
+                                    </span>
+                                  </div>
+                                  
+                                  {task.description && (
+                                    <p className="text-xs text-gray-600 mt-1">{task.description}</p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center space-x-1 ml-2">
+                                <div className="relative">
+                                  <button
+                                    onClick={() => setShowMoveDropdown(showMoveDropdown === task.id ? null : task.id)}
+                                    className="text-gray-400 hover:text-blue-600"
+                                    title="Move task"
+                                  >
+                                    <ArrowRight className="h-4 w-4" />
+                                  </button>
+                                  
+                                  {showMoveDropdown === task.id && (
+                                    <div className="absolute right-0 top-6 z-50 bg-white border border-gray-200 rounded-md shadow-lg min-w-[120px]">
+                                      <div className="py-1">
+                                        <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100">
+                                          Move to:
+                                        </div>
+                                        {daysOfWeek.filter(d => d !== day).map((targetDay) => (
+                                          <button
+                                            key={targetDay}
+                                            onClick={() => moveTask(day, task.id, targetDay)}
+                                            className="w-full text-left px-3 py-1 text-xs hover:bg-gray-50"
+                                          >
+                                            {targetDay}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <button
+                                  onClick={() => reorderTask(day, task.id, 'up')}
+                                  className="text-gray-400 hover:text-blue-600"
+                                  title="Move up"
+                                  disabled={dayTasks.indexOf(task) === 0}
+                                >
+                                  <ChevronUp className="h-4 w-4" />
+                                </button>
+                                
+                                <button
+                                  onClick={() => reorderTask(day, task.id, 'down')}
+                                  className="text-gray-400 hover:text-blue-600"
+                                  title="Move down"
+                                  disabled={dayTasks.indexOf(task) === dayTasks.length - 1}
+                                >
+                                  <ChevronDown className="h-4 w-4" />
+                                </button>
+                                
+                                <button
+                                  onClick={() => removeTask(day, task.id)}
+                                  className="text-gray-400 hover:text-red-600"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
                             </div>
-                            
-                            {task.description && (
-                              <p className="text-xs text-gray-600 mt-1">{task.description}</p>
-                            )}
                           </div>
-                        </div>
-                        
-                        <button
-                          onClick={() => removeTask(day, task.id)}
-                          className="text-gray-400 hover:text-red-600 ml-2"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        ))}
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Add Task Modal */}
       {isAddingTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-screen overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Add Task for {selectedDay}</h3>
+              <h3 className="text-lg font-semibold">
+                {modalType === 'workout' ? 'Add Workout' : 
+                 modalType === 'nutrition' ? 'Add Meal' : 
+                 `Add Task for ${selectedDay}`}
+              </h3>
               <button
                 onClick={() => {
                   setIsAddingTask(false);
                   setSelectedDay(null);
+                  setSelectedCategory(null);
+                  setModalType('basic');
                   reset();
                 }}
                 className="text-gray-400 hover:text-gray-600"
@@ -336,63 +821,417 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
             </div>
 
             <form onSubmit={handleSubmit(addTask)} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Task Title
-                </label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="e.g., Chest & Triceps workout"
-                  {...register('title', { required: 'Task title is required' })}
-                />
-                {errors.title && (
-                  <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
-                )}
-              </div>
+              {modalType === 'workout' ? (
+                // Workout Modal (from WorkoutLogger)
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Workout Type
+                    </label>
+                    <select
+                      className="input-field"
+                      {...register('type', { required: 'Workout type is required' })}
+                    >
+                      <option value="">Select workout type</option>
+                      {workoutTypes.map((type) => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                    {errors.type && (
+                      <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
-                </label>
-                <select
-                  className="input-field"
-                  {...register('category', { required: 'Category is required' })}
-                >
-                  <option value="">Select category</option>
-                  {taskCategories.map((category) => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-                {errors.category && (
-                  <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>
-                )}
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Exercise Name
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="e.g., Bench Press"
+                      {...register('exercise', { required: 'Exercise name is required' })}
+                    />
+                    {errors.exercise && (
+                      <p className="mt-1 text-sm text-red-600">{errors.exercise.message}</p>
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description (optional)
-                </label>
-                <textarea
-                  className="input-field"
-                  rows="2"
-                  placeholder="Additional details..."
-                  {...register('description')}
-                />
-              </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Sets
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="input-field"
+                        placeholder="3"
+                        {...register('sets', { required: 'Sets are required' })}
+                      />
+                      {errors.sets && (
+                        <p className="mt-1 text-sm text-red-600">{errors.sets.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Reps
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="input-field"
+                        placeholder="10"
+                        {...register('reps', { required: 'Reps are required' })}
+                      />
+                      {errors.reps && (
+                        <p className="mt-1 text-sm text-red-600">{errors.reps.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Weight (kg)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        className="input-field"
+                        placeholder="0"
+                        {...register('weight')}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Duration (min)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="input-field"
+                        placeholder="30"
+                        {...register('duration')}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Machine/Equipment
+                    </label>
+                    <select
+                      className="input-field"
+                      {...register('machine', { required: 'Machine/Equipment is required' })}
+                    >
+                      <option value="">Select machine/equipment</option>
+                      {machines.map((machine) => (
+                        <option key={machine} value={machine}>{machine}</option>
+                      ))}
+                    </select>
+                    {errors.machine && (
+                      <p className="mt-1 text-sm text-red-600">{errors.machine.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notes (optional)
+                    </label>
+                    <textarea
+                      className="input-field"
+                      rows="2"
+                      placeholder="Any additional notes..."
+                      {...register('notes')}
+                    />
+                  </div>
+                </>
+              ) : modalType === 'nutrition' ? (
+                // Nutrition Modal (from NutritionLogger)
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Meal Type
+                    </label>
+                    <select
+                      className="input-field"
+                      {...register('mealType', { required: 'Meal type is required' })}
+                    >
+                      <option value="">Select meal type</option>
+                      {mealTypes.map((type) => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                    {errors.mealType && (
+                      <p className="mt-1 text-sm text-red-600">{errors.mealType.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Food Item
+                    </label>
+                    <select
+                      className="input-field"
+                      {...register('food', { required: 'Food item is required' })}
+                      onChange={(e) => handleFoodChange(e.target.value)}
+                    >
+                      <option value="">Select or type food item</option>
+                      {Object.entries(commonFoods).map(([category, foods]) => (
+                        <optgroup key={category} label={category}>
+                          {Object.keys(foods).map((food) => (
+                            <option key={food} value={food}>{food}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    {errors.food && (
+                      <p className="mt-1 text-sm text-red-600">{errors.food.message}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Quantity
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        className="input-field"
+                        placeholder="1"
+                        {...register('quantity', { required: 'Quantity is required' })}
+                      />
+                      {errors.quantity && (
+                        <p className="mt-1 text-sm text-red-600">{errors.quantity.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Unit
+                      </label>
+                      <select
+                        className="input-field"
+                        {...register('unit', { required: 'Unit is required' })}
+                      >
+                        <option value="">Select unit</option>
+                        <option value="g">grams</option>
+                        <option value="serving">serving</option>
+                        <option value="piece">piece</option>
+                        <option value="cup">cup</option>
+                        <option value="tbsp">tablespoon</option>
+                        <option value="ml">milliliters</option>
+                      </select>
+                      {errors.unit && (
+                        <p className="mt-1 text-sm text-red-600">{errors.unit.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Protein (g)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        className="input-field"
+                        placeholder="0"
+                        {...register('protein')}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Carbs (g)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        className="input-field"
+                        placeholder="0"
+                        {...register('carbs')}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Fats (g)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        className="input-field"
+                        placeholder="0"
+                        {...register('fats')}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Calories
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input-field"
+                        placeholder="0"
+                        {...register('calories')}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notes (optional)
+                    </label>
+                    <textarea
+                      className="input-field"
+                      rows="2"
+                      placeholder="Any additional notes..."
+                      {...register('notes')}
+                    />
+                  </div>
+                </>
+              ) : (
+                // Basic Task Modal
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Task Title
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="e.g., Chest & Triceps workout"
+                      {...register('title', { required: 'Task title is required' })}
+                    />
+                    {errors.title && (
+                      <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Category
+                    </label>
+                    <select
+                      className="input-field"
+                      value={selectedCategory || ''}
+                      onChange={(e) => {
+                        setSelectedCategory(e.target.value);
+                        setValue('category', e.target.value);
+                      }}
+                    >
+                      <option value="">Select category</option>
+                      {taskCategories.map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                    {errors.category && (
+                      <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>
+                    )}
+                  </div>
+
+                  {/* Workout-specific fields */}
+                  {selectedCategory === 'Workout' && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Sets
+                          </label>
+                          <input
+                            type="number"
+                            className="input-field"
+                            placeholder="3"
+                            {...register('sets')}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Reps
+                          </label>
+                          <input
+                            type="number"
+                            className="input-field"
+                            placeholder="10"
+                            {...register('reps')}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Weight (kg)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          className="input-field"
+                          placeholder="0"
+                          {...register('weight')}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Nutrition-specific fields */}
+                  {selectedCategory === 'Nutrition' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Calories
+                      </label>
+                      <input
+                        type="number"
+                        className="input-field"
+                        placeholder="500"
+                        {...register('calories')}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description (optional)
+                    </label>
+                    <textarea
+                      className="input-field"
+                      rows="2"
+                      placeholder="Additional details..."
+                      {...register('description')}
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex space-x-3">
                 <button
                   type="submit"
                   className="flex-1 btn-primary"
                 >
-                  Add Task
+                  {modalType === 'workout' ? 'Add Workout' :
+                   modalType === 'nutrition' ? 'Add Meal' : 
+                   'Add Task'}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setIsAddingTask(false);
                     setSelectedDay(null);
+                    setSelectedCategory(null);
+                    setModalType('basic');
                     reset();
                   }}
                   className="flex-1 btn-secondary"

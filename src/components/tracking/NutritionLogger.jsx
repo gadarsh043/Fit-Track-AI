@@ -85,6 +85,7 @@ const NutritionLogger = ({ meals = [], onUpdate }) => {
       fats: parseFloat(data.fats) || 0,
       calories: parseFloat(data.calories) || 0,
       notes: data.notes || '',
+      completed: false,
       loggedAt: new Date().toISOString()
     };
 
@@ -99,6 +100,16 @@ const NutritionLogger = ({ meals = [], onUpdate }) => {
     const updatedMeals = meals.filter(m => m.id !== mealId);
     onUpdate(updatedMeals);
     toast.success('Meal removed');
+  };
+
+  const completeMeal = (mealId) => {
+    const updatedMeals = meals.map(m => 
+      m.id === mealId 
+        ? { ...m, completed: !m.completed, completedAt: new Date().toISOString() }
+        : m
+    );
+    onUpdate(updatedMeals);
+    toast.success('Meal marked as complete!');
   };
 
   // Calculate totals
@@ -184,35 +195,54 @@ const NutritionLogger = ({ meals = [], onUpdate }) => {
                   
                   <div className="space-y-3">
                     {mealsOfType.map((meal) => (
-                      <div key={meal.id} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                        <div className="flex-1">
-                          <div className="flex items-center mb-1">
-                            <span className="font-medium text-gray-900">
-                              {meal.food}
-                            </span>
-                            <span className="ml-2 text-sm text-gray-600">
-                              ({meal.quantity} {meal.unit})
-                            </span>
+                      <div 
+                        key={meal.id} 
+                        className={`p-4 border rounded-lg ${
+                          meal.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center mb-1">
+                              <span className="font-medium text-gray-900">
+                                {meal.food}
+                              </span>
+                              <span className="ml-2 text-sm text-gray-600">
+                                ({meal.quantity} {meal.unit})
+                              </span>
+                            </div>
+                            
+                            <div className="flex space-x-4 text-sm text-gray-600">
+                              <span className="text-red-600">P: {meal.protein}g</span>
+                              <span className="text-blue-600">C: {meal.carbs}g</span>
+                              <span className="text-yellow-600">F: {meal.fats}g</span>
+                              <span className="text-green-600">{meal.calories} cal</span>
+                            </div>
+                            
+                            {meal.notes && (
+                              <p className="mt-1 text-xs text-gray-500">{meal.notes}</p>
+                            )}
                           </div>
                           
-                          <div className="flex space-x-4 text-sm text-gray-600">
-                            <span className="text-red-600">P: {meal.protein}g</span>
-                            <span className="text-blue-600">C: {meal.carbs}g</span>
-                            <span className="text-yellow-600">F: {meal.fats}g</span>
-                            <span className="text-green-600">{meal.calories} cal</span>
+                          <div className="flex items-center space-x-2 ml-4">
+                            <button
+                              onClick={() => completeMeal(meal.id)}
+                              className={`px-3 py-1 rounded text-sm font-medium ${
+                                meal.completed
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              }`}
+                            >
+                              {meal.completed ? '✓ Done' : 'Mark Done'}
+                            </button>
+                            <button
+                              onClick={() => removeMeal(meal.id)}
+                              className="text-gray-400 hover:text-red-600"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
                           </div>
-                          
-                          {meal.notes && (
-                            <p className="mt-1 text-xs text-gray-500">{meal.notes}</p>
-                          )}
                         </div>
-                        
-                        <button
-                          onClick={() => removeMeal(meal.id)}
-                          className="text-gray-400 hover:text-red-600 ml-4"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
                       </div>
                     ))}
                   </div>

@@ -7,14 +7,13 @@ import {
   Dumbbell, 
   Apple,
   User,
-  Menu,
   X,
   Brain,
   Calendar
 } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { format, startOfWeek, addDays } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -89,8 +88,38 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     
     if (tabMap[path] && tabMap[path] !== activeTab) {
       setActiveTab(tabMap[path]);
+      // Force sync when switching tabs (but don't add syncScheduleToData as dependency)
+      if (user && todayData) {
+        setTimeout(() => {
+          // Call sync function here without dependency
+          const syncData = async () => {
+            const todayName = format(today, 'EEEE');
+            const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+            
+            try {
+              const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
+              if (savedSchedule) {
+                const weeklyTasks = JSON.parse(savedSchedule);
+                const todayTasks = weeklyTasks[todayName] || [];
+                
+                // Quick sync without full function call
+                const workoutTasks = todayTasks.filter(task => task.category === 'Workout');
+                const nutritionTasks = todayTasks.filter(task => task.category === 'Nutrition');
+                
+                if (workoutTasks.length > 0 || nutritionTasks.length > 0) {
+                  // Trigger a state update to force re-render
+                  setTodayData(prev => ({ ...prev }));
+                }
+              }
+            } catch (error) {
+              console.error('Error in quick sync:', error);
+            }
+          };
+          syncData();
+        }, 100);
+      }
     }
-  }, [location.pathname, activeTab]);
+  }, [location.pathname, activeTab, user, todayData, today]);
 
   const loadUserData = useCallback(async () => {
     try {
@@ -123,6 +152,198 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     }
   }, [user, loadUserData, loadTodayData]);
 
+  // Function to sync weekly schedule back to workout/nutrition data
+  const syncScheduleToData = useCallback(async () => {
+    const todayName = format(today, 'EEEE');
+    const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    
+    try {
+      const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
+      if (!savedSchedule) return;
+      
+      const weeklyTasks = JSON.parse(savedSchedule);
+      const todayTasks = weeklyTasks[todayName] || [];
+      
+      // Only sync workout tasks that were MANUALLY created in schedule (not auto-synced from workouts)
+      // Auto-synced workout tasks have IDs that start with 'workout_'
+      // Manually created tasks have simple timestamp IDs
+      const manualWorkoutTasks = todayTasks.filter(task => 
+        task.category === 'Workout' && 
+        !task.id.startsWith('workout_') // Exclude auto-synced tasks
+      );
+      
+      if (manualWorkoutTasks.length > 0) {
+        const workoutData = manualWorkoutTasks.map(task => {
+          // Parse description to extract sets and reps if available
+          const setRepsMatch = task.description?.match(/(\d+) sets × (\d+) reps/);
+          return {
+            id: `schedule_workout_${task.id}`, // Prefix to identify schedule-originated workouts
+            exercise: task.title,
+            sets: task.sets || (setRepsMatch ? parseInt(setRepsMatch[1]) : 3),
+            reps: task.reps || (setRepsMatch ? parseInt(setRepsMatch[2]) : 10),
+            weight: task.weight || 0, // Use task weight or default to 0
+            notes: task.description || '',
+            completed: task.completed || false, // Sync completion status
+            source: 'schedule',
+            createdAt: task.createdAt
+          };
+        });
+        
+        // Update workout data - only add schedule-originated workouts
+        const existingWorkouts = todayData.workouts || [];
+        const nonScheduleWorkouts = existingWorkouts.filter(workout => !workout.id.startsWith('schedule_workout_'));
+        const mergedWorkouts = [...nonScheduleWorkouts, ...workoutData];
+        
+        // Only update if data has actually changed
+        const existingScheduleWorkouts = existingWorkouts.filter(workout => workout.id && workout.id.startsWith('schedule_workout_'));
+        const workoutDataChanged = JSON.stringify(existingScheduleWorkouts) !== JSON.stringify(workoutData);
+        
+        if (workoutDataChanged) {
+          setTodayData(prev => ({ ...prev, workouts: mergedWorkouts }));
+        }
+      } else {
+        // Remove schedule-originated workouts if no manual workout tasks exist
+        const existingWorkouts = todayData.workouts || [];
+        const nonScheduleWorkouts = existingWorkouts.filter(workout => !workout.id.startsWith('schedule_workout_'));
+        if (nonScheduleWorkouts.length !== existingWorkouts.length) {
+          setTodayData(prev => ({ ...prev, workouts: nonScheduleWorkouts }));
+        }
+      }
+      
+      // Also sync completion status for auto-synced workout tasks back to workout data
+      const autoSyncedWorkoutTasks = todayTasks.filter(task => 
+        task.category === 'Workout' && task.id.startsWith('workout_')
+      );
+      
+      if (autoSyncedWorkoutTasks.length > 0) {
+        const existingWorkouts = todayData.workouts || [];
+        const updatedWorkouts = existingWorkouts.map(workout => {
+          // Find corresponding task in schedule
+          const scheduleTask = autoSyncedWorkoutTasks.find(task => 
+            task.title === workout.exercise && 
+            task.description?.includes(`${workout.sets} sets × ${workout.reps} reps`)
+          );
+          
+          if (scheduleTask && workout.completed !== scheduleTask.completed) {
+            return { ...workout, completed: scheduleTask.completed };
+          }
+          return workout;
+        });
+        
+        // Update if completion status changed
+        if (JSON.stringify(updatedWorkouts) !== JSON.stringify(existingWorkouts)) {
+          setTodayData(prev => ({ ...prev, workouts: updatedWorkouts }));
+        }
+      } else {
+        // If NO auto-synced workout tasks exist, remove all auto-synced workouts from data
+        const existingWorkouts = todayData.workouts || [];
+        const nonAutoSyncedWorkouts = existingWorkouts.filter(workout => 
+          !workout.id || !workout.id.startsWith('schedule_workout_')
+        );
+        
+        if (nonAutoSyncedWorkouts.length !== existingWorkouts.length) {
+          setTodayData(prev => ({ ...prev, workouts: nonAutoSyncedWorkouts }));
+        }
+      }
+      
+      // Sync nutrition tasks to nutrition data - SAME LOGIC AS WORKOUTS
+      const nutritionTasks = todayTasks.filter(task => task.category === 'Nutrition');
+      const existingMeals = todayData.meals || [];
+      
+      if (nutritionTasks.length > 0) {
+        // Only sync meal tasks that were MANUALLY created in schedule (not auto-synced from nutrition)
+        // Auto-synced meal tasks have IDs that start with 'meal_'
+        // Manually created tasks have simple timestamp IDs
+        const manualNutritionTasks = nutritionTasks.filter(task => 
+          !task.id.startsWith('meal_') // Exclude auto-synced tasks
+        );
+        
+        if (manualNutritionTasks.length > 0) {
+          const mealData = manualNutritionTasks.map(task => {
+            // Parse description to extract calories if available
+            const caloriesMatch = task.description?.match(/(\d+) cal/);
+            return {
+              id: `schedule_meal_${task.id}`, // Prefix to identify schedule-originated meals
+              food: task.title,
+              mealType: task.mealType || 'Other',
+              calories: task.calories || (caloriesMatch ? parseInt(caloriesMatch[1]) : 500),
+              protein: task.protein || Math.round((task.calories || 500) * 0.25 / 4),
+              carbs: task.carbs || Math.round((task.calories || 500) * 0.45 / 4),
+              fats: task.fats || Math.round((task.calories || 500) * 0.30 / 9),
+              quantity: task.quantity || 1,
+              unit: task.unit || 'serving',
+              notes: task.description || '',
+              completed: task.completed || false, // Sync completion status
+              source: 'schedule',
+              createdAt: task.createdAt
+            };
+          });
+          
+          // Update meal data - only add schedule-originated meals
+          const nonScheduleMeals = existingMeals.filter(meal => !meal.id.startsWith('schedule_meal_'));
+          const mergedMeals = [...nonScheduleMeals, ...mealData];
+          
+          // Only update if data has actually changed
+          const existingScheduleMeals = existingMeals.filter(meal => meal.id && meal.id.startsWith('schedule_meal_'));
+          const mealDataChanged = JSON.stringify(existingScheduleMeals) !== JSON.stringify(mealData);
+          
+          if (mealDataChanged) {
+            setTodayData(prev => ({ ...prev, meals: mergedMeals }));
+          }
+        } else {
+          // Remove schedule-originated meals if no manual nutrition tasks exist
+          const nonScheduleMeals = existingMeals.filter(meal => !meal.id.startsWith('schedule_meal_'));
+          if (nonScheduleMeals.length !== existingMeals.length) {
+            setTodayData(prev => ({ ...prev, meals: nonScheduleMeals }));
+          }
+        }
+      } else {
+        // Remove all schedule meals if no nutrition tasks
+        const nonScheduleMeals = existingMeals.filter(meal => !meal.id.startsWith('schedule_meal_'));
+        if (nonScheduleMeals.length !== existingMeals.length) {
+          setTodayData(prev => ({ ...prev, meals: nonScheduleMeals }));
+        }
+      }
+
+      // Also sync completion status for auto-synced meal tasks back to meal data
+      const autoSyncedMealTasks = todayTasks.filter(task => 
+        task.category === 'Nutrition' && task.id.startsWith('meal_')
+      );
+      
+      if (autoSyncedMealTasks.length > 0) {
+        const existingMeals = todayData.meals || [];
+        const updatedMeals = existingMeals.map(meal => {
+          // Find corresponding task in schedule using mealData.id
+          const scheduleTask = autoSyncedMealTasks.find(task => 
+            task.mealData?.id === meal.id
+          );
+          
+          if (scheduleTask && meal.completed !== scheduleTask.completed) {
+            return { ...meal, completed: scheduleTask.completed };
+          }
+          return meal;
+        });
+        
+        // Update if completion status changed
+        if (JSON.stringify(updatedMeals) !== JSON.stringify(existingMeals)) {
+          setTodayData(prev => ({ ...prev, meals: updatedMeals }));
+        }
+      } else {
+        // If NO auto-synced meal tasks exist, remove all auto-synced meals from data
+        const existingMeals = todayData.meals || [];
+        const nonAutoSyncedMeals = existingMeals.filter(meal => 
+          !meal.id || !meal.id.startsWith('schedule_meal_')
+        );
+        
+        if (nonAutoSyncedMeals.length !== existingMeals.length) {
+          setTodayData(prev => ({ ...prev, meals: nonAutoSyncedMeals }));
+        }
+      }
+    } catch (error) {
+      console.error('Error syncing schedule to data:', error);
+    }
+  }, [today, user?.uid, todayData.workouts, todayData.meals]);
+
   const updateTodayData = async (field, value) => {
     try {
       const todayStr = format(today, 'yyyy-MM-dd');
@@ -130,21 +351,29 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       
       const updateData = {
         [field]: value,
+        date: todayStr, // Ensure date is always set
         updatedAt: new Date().toISOString()
       };
       
       await updateDoc(dayRef, updateData);
       setTodayData(prev => ({ ...prev, [field]: value }));
       toast.success('Data updated successfully!');
-    } catch {
-      // If document doesn't exist, create it
+    } catch (updateError) {
+      // If document doesn't exist, create it with the correct document ID
+      console.log('Document does not exist, creating new one:', updateError.message);
       try {
-        await addDoc(collection(db, 'users', user.uid, 'dailyLogs'), {
-          date: format(today, 'yyyy-MM-dd'),
+        const todayStr = format(today, 'yyyy-MM-dd');
+        const dayRef = doc(db, 'users', user.uid, 'dailyLogs', todayStr);
+        
+        const newDocData = {
+          date: todayStr,
           [field]: value,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        });
+        };
+        
+        await setDoc(dayRef, newDocData, { merge: true });
+        
         setTodayData(prev => ({ ...prev, [field]: value }));
         toast.success('Data saved successfully!');
       } catch (saveError) {
@@ -172,17 +401,19 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         weeklyTasks[todayName] = [];
       }
       
-      // Remove existing workout tasks for today
-      weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => task.category !== 'Workout');
+      // Remove existing auto-synced workout tasks for today (but preserve manually created ones)
+      weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => 
+        task.category !== 'Workout' || !task.id.startsWith('workout_')
+      );
       
-      // Add new workout tasks
+      // Add new workout tasks (this handles both additions and deletions)
       workouts.forEach((workout, index) => {
         weeklyTasks[todayName].push({
           id: `workout_${Date.now()}_${index}`,
           title: workout.exercise,
           category: 'Workout',
           description: `${workout.sets} sets × ${workout.reps} reps`,
-          completed: true, // Mark as completed since it's logged
+          completed: workout.completed || false, // Sync completion status
           createdAt: new Date().toISOString()
         });
       });
@@ -198,7 +429,7 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
   const handleNutritionUpdate = useCallback(async (meals) => {
     await updateTodayData('meals', meals);
     
-    // Also update weekly schedule
+    // Also update weekly schedule - SAME LOGIC AS WORKOUTS
     const todayName = format(today, 'EEEE');
     const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     
@@ -210,21 +441,32 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         weeklyTasks[todayName] = [];
       }
       
-      // Remove existing nutrition tasks for today
-      weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => task.category !== 'Nutrition');
+      // Remove existing auto-synced nutrition tasks for today (but preserve manually created ones)
+      weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => 
+        task.category !== 'Nutrition' || !task.id.startsWith('meal_')
+      );
       
-      // Add meal summary
-      if (meals.length > 0) {
-        const totalCalories = meals.reduce((sum, meal) => sum + (meal.calories || 0), 0);
+      // Add new meal tasks (this handles both additions and deletions)
+      meals.forEach((meal, index) => {
         weeklyTasks[todayName].push({
-          id: `nutrition_${Date.now()}`,
-          title: `${meals.length} meals logged`,
+          id: `meal_${Date.now()}_${index}`,
+          title: meal.food || meal.name,
           category: 'Nutrition',
-          description: `Total: ${totalCalories} calories`,
-          completed: true,
-          createdAt: new Date().toISOString()
+          description: `${meal.calories} cal (${meal.mealType})`,
+          completed: meal.completed || false, // Sync completion status
+          createdAt: new Date().toISOString(),
+          // Store meal data for reverse sync
+          mealData: {
+            id: meal.id,
+            food: meal.food,
+            mealType: meal.mealType,
+            calories: meal.calories,
+            protein: meal.protein,
+            carbs: meal.carbs,
+            fats: meal.fats
+          }
         });
-      }
+      });
       
       localStorage.setItem(`schedule_${user.uid}_${weekKey}`, JSON.stringify(weeklyTasks));
     } catch (error) {
@@ -241,6 +483,21 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     { id: 'ai-insights', label: 'AI Insights', icon: Brain, path: '/ai-insights' },
     { id: 'profile', label: 'Profile', icon: User, path: '/profile' },
   ];
+
+  // Run sync after all functions are defined
+  useEffect(() => {
+    if (user && todayData && syncScheduleToData) {
+      const timeoutId = setTimeout(() => {
+        syncScheduleToData();
+      }, 200);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [user, todayData.workouts?.length, todayData.meals?.length, 
+      // Also watch for completion status changes
+      todayData.workouts?.map(w => w.completed).join(','),
+      todayData.meals?.map(m => m.completed).join(',')
+  ]);
 
   const StatCard = ({ title, value, subtitle, icon: Icon, color = 'blue' }) => (
     <div className="card">
@@ -353,7 +610,20 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       case 'workouts':
         return (
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-6">Workout Tracking</h1>
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-3xl font-bold text-gray-900">Workout Tracking</h1>
+              <button
+                onClick={() => {
+                  // Refresh data from Firebase
+                  loadTodayData();
+                  toast.success('Data refreshed!');
+                }}
+                className="btn-secondary text-sm"
+                title="Refresh workout data"
+              >
+                🔄 Refresh
+              </button>
+            </div>
             <WorkoutLogger
               workouts={todayData.workouts || []}
               onUpdate={handleWorkoutUpdate}
@@ -364,7 +634,20 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       case 'nutrition':
         return (
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-6">Nutrition Tracking</h1>
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-3xl font-bold text-gray-900">Nutrition Tracking</h1>
+              <button
+                onClick={() => {
+                  // Refresh data from Firebase
+                  loadTodayData();
+                  toast.success('Data refreshed!');
+                }}
+                className="btn-secondary text-sm"
+                title="Refresh nutrition data"
+              >
+                🔄 Refresh
+              </button>
+            </div>
             <NutritionLogger
               meals={todayData.meals || []}
               onUpdate={handleNutritionUpdate}
@@ -375,8 +658,20 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       case 'schedule':
         return (
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-6">Weekly Schedule</h1>
-            <WeeklySchedule userId={user?.uid} />
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-3xl font-bold text-gray-900">Weekly Schedule</h1>
+              <button
+                onClick={() => syncScheduleToData()}
+                className="btn-secondary text-sm"
+                title="Sync with workout/nutrition data"
+              >
+                🔄 Sync Data
+              </button>
+            </div>
+            <WeeklySchedule 
+              userId={user?.uid} 
+              onUpdateSchedule={syncScheduleToData}
+            />
           </div>
         );
 
@@ -480,7 +775,7 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
             onClick={() => setSidebarOpen(true)}
             className="text-gray-400 hover:text-gray-600"
           >
-            <Menu className="h-6 w-6" />
+            <X className="h-6 w-6" />
           </button>
           <h1 className="text-lg font-semibold">FitTrack AI</h1>
           <div className="w-6" /> {/* Spacer */}
