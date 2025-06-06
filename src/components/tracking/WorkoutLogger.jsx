@@ -3,30 +3,12 @@ import { Plus, X, Dumbbell, Clock, Target, Weight } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import PropTypes from 'prop-types';
 import toast from 'react-hot-toast';
+import { workoutTypes, machines } from '../../constants/foodData';
 
 const WorkoutLogger = ({ workouts = [], onUpdate }) => {
   const [isAddingWorkout, setIsAddingWorkout] = useState(false);
   
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
-
-  const workoutTypes = [
-    'Push Day (Chest, Shoulders, Triceps)',
-    'Pull Day (Back, Biceps)',
-    'Leg Day',
-    'Upper Body',
-    'Lower Body',
-    'Full Body',
-    'Cardio',
-    'Swimming',
-    'Recovery/Stretching'
-  ];
-
-  const machines = [
-    'Barbell', 'Dumbbell', 'Cable Machine', 'Smith Machine',
-    'Leg Press Machine', 'Lat Pulldown Machine', 'Seated Row Machine',
-    'Chest Press Machine', 'Shoulder Press Machine', 'Leg Curl Machine',
-    'Leg Extension Machine', 'Calf Raise Machine', 'Free Weights', 'Bodyweight'
-  ];
 
   const addWorkout = (data) => {
     const newWorkout = {
@@ -214,7 +196,7 @@ const WorkoutLogger = ({ workouts = [], onUpdate }) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sets
+                    Total Sets
                   </label>
                   <input
                     type="number"
@@ -230,7 +212,7 @@ const WorkoutLogger = ({ workouts = [], onUpdate }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Reps
+                    Average Reps
                   </label>
                   <input
                     type="number"
@@ -248,21 +230,21 @@ const WorkoutLogger = ({ workouts = [], onUpdate }) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Weight (kg)
+                    Average Weight (kg/lb)
                   </label>
                   <input
                     type="number"
                     step="0.5"
                     min="0"
                     className="input-field"
-                    placeholder="80"
+                    placeholder="480"
                     {...register('weight')}
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Duration (min)
+                    Total Duration (min)
                   </label>
                   <input
                     type="number"

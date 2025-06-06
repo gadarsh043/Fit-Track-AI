@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { Edit, Save, X, User } from 'lucide-react';
+import { Edit, Save, X } from 'lucide-react';
 import PropTypes from 'prop-types';
 import toast from 'react-hot-toast';
 

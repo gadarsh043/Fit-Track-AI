@@ -17,7 +17,7 @@ import PropTypes from 'prop-types';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { format, startOfWeek, addDays } from 'date-fns';
+import { format, startOfWeek } from 'date-fns';
 import toast from 'react-hot-toast';
 
 // Components
@@ -44,19 +44,15 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     weight: null
   });
   
-  // Add ref to prevent multiple sync operations
+  // Prevent multiple sync operations
   const syncInProgress = useRef(false);
   
-  // Fix timezone issues by ensuring we use local date
+  // Get today's date in local timezone
   const today = useMemo(() => {
     const now = new Date();
-    // Create a new date in local timezone, not UTC
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   }, []);
   
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Start week on Monday
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-
   // Handle tab changes with navigation
   const handleTabChange = useCallback((tab) => {
     setActiveTab(tab);
@@ -93,38 +89,8 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     
     if (tabMap[path] && tabMap[path] !== activeTab) {
       setActiveTab(tabMap[path]);
-      // Force sync when switching tabs (but don't add syncScheduleToData as dependency)
-      if (user && todayData) {
-        setTimeout(() => {
-          // Call sync function here without dependency
-          const syncData = async () => {
-            const todayName = format(today, 'EEEE');
-            const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-            
-            try {
-              const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
-              if (savedSchedule) {
-                const weeklyTasks = JSON.parse(savedSchedule);
-                const todayTasks = weeklyTasks[todayName] || [];
-                
-                // Quick sync without full function call
-                const workoutTasks = todayTasks.filter(task => task.category === 'Workout');
-                const nutritionTasks = todayTasks.filter(task => task.category === 'Nutrition');
-                
-                if (workoutTasks.length > 0 || nutritionTasks.length > 0) {
-                  // Trigger a state update to force re-render
-                  setTodayData(prev => ({ ...prev }));
-                }
-              }
-            } catch (error) {
-              console.error('Error in quick sync:', error);
-            }
-          };
-          syncData();
-        }, 100);
-      }
     }
-  }, [location.pathname, activeTab, user, todayData, today]);
+  }, [location.pathname, activeTab]);
 
   const loadUserData = useCallback(async () => {
     try {
@@ -157,16 +123,16 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     }
   }, [user, loadUserData, loadTodayData]);
 
-  // Function to sync weekly schedule back to workout/nutrition data
+  // Simple sync function - only sync from schedule to data, not bidirectional
   const syncScheduleToData = useCallback(async () => {
-    if (!user?.uid || !todayData || syncInProgress.current) return; // Early return if no user, data, or sync in progress
+    if (!user?.uid || !todayData || syncInProgress.current) return;
     
-    syncInProgress.current = true; // Set sync in progress
-    
-    const todayName = format(today, 'EEEE');
-    const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    syncInProgress.current = true;
     
     try {
+      const todayName = format(today, 'EEEE');
+      const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      
       const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
       if (!savedSchedule) {
         syncInProgress.current = false;
@@ -176,196 +142,82 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       const weeklyTasks = JSON.parse(savedSchedule);
       const todayTasks = weeklyTasks[todayName] || [];
       
-      // Only sync workout tasks that were MANUALLY created in schedule (not auto-synced from workouts)
-      // Auto-synced workout tasks have IDs that start with 'workout_'
-      // Manually created tasks have simple timestamp IDs
+      // Simple workout sync - only manually created schedule tasks
       const manualWorkoutTasks = todayTasks.filter(task => 
-        task.category === 'Workout' && 
-        !task.id.startsWith('workout_') // Exclude auto-synced tasks
+        task.category === 'Workout' && !task.id.startsWith('workout_')
       );
       
       if (manualWorkoutTasks.length > 0) {
-        const workoutData = manualWorkoutTasks.map(task => {
-          // Parse description to extract sets and reps if available
-          const setRepsMatch = task.description?.match(/(\d+) sets × (\d+) reps/);
-          return {
-            id: `schedule_workout_${task.id}`, // Prefix to identify schedule-originated workouts
-            exercise: task.title,
-            sets: task.sets || (setRepsMatch ? parseInt(setRepsMatch[1]) : 3),
-            reps: task.reps || (setRepsMatch ? parseInt(setRepsMatch[2]) : 10),
-            weight: task.weight || 0, // Use task weight or default to 0
-            notes: task.description || '',
-            completed: task.completed || false, // Sync completion status
-            source: 'schedule',
-            createdAt: task.createdAt
-          };
-        });
+        const workoutData = manualWorkoutTasks.map(task => ({
+          id: `schedule_workout_${task.id}`,
+          exercise: task.title,
+          sets: task.sets || 3,
+          reps: task.reps || 10,
+          weight: task.weight || 0,
+          notes: task.description || '',
+          completed: task.completed || false,
+          source: 'schedule',
+          createdAt: task.createdAt
+        }));
         
-        // Update workout data - only add schedule-originated workouts
         const existingWorkouts = todayData.workouts || [];
-        const nonScheduleWorkouts = existingWorkouts.filter(workout => !workout.id.startsWith('schedule_workout_'));
-        const mergedWorkouts = [...nonScheduleWorkouts, ...workoutData];
+        const nonScheduleWorkouts = existingWorkouts.filter(workout => 
+          !workout.id?.startsWith('schedule_workout_')
+        );
         
-        // Only update if data has actually changed
-        const existingScheduleWorkouts = existingWorkouts.filter(workout => workout.id && workout.id.startsWith('schedule_workout_'));
-        const workoutDataChanged = JSON.stringify(existingScheduleWorkouts) !== JSON.stringify(workoutData);
-        
-        if (workoutDataChanged) {
-          setTodayData(prev => ({ ...prev, workouts: mergedWorkouts }));
-        }
-      } else {
-        // Remove schedule-originated workouts if no manual workout tasks exist
-        const existingWorkouts = todayData.workouts || [];
-        const nonScheduleWorkouts = existingWorkouts.filter(workout => !workout.id.startsWith('schedule_workout_'));
-        if (nonScheduleWorkouts.length !== existingWorkouts.length) {
-          setTodayData(prev => ({ ...prev, workouts: nonScheduleWorkouts }));
-        }
+        setTodayData(prev => ({ 
+          ...prev, 
+          workouts: [...nonScheduleWorkouts, ...workoutData] 
+        }));
       }
       
-      // Also sync completion status for auto-synced workout tasks back to workout data
-      const autoSyncedWorkoutTasks = todayTasks.filter(task => 
-        task.category === 'Workout' && task.id.startsWith('workout_')
+      // Simple nutrition sync - only manually created schedule tasks
+      const manualNutritionTasks = todayTasks.filter(task => 
+        task.category === 'Nutrition' && !task.id.startsWith('meal_')
       );
       
-      if (autoSyncedWorkoutTasks.length > 0) {
-        const existingWorkouts = todayData.workouts || [];
-        const updatedWorkouts = existingWorkouts.map(workout => {
-          // Find corresponding task in schedule
-          const scheduleTask = autoSyncedWorkoutTasks.find(task => 
-            task.title === workout.exercise && 
-            task.description?.includes(`${workout.sets} sets × ${workout.reps} reps`)
-          );
-          
-          if (scheduleTask && workout.completed !== scheduleTask.completed) {
-            return { ...workout, completed: scheduleTask.completed };
-          }
-          return workout;
-        });
+      if (manualNutritionTasks.length > 0) {
+        const mealData = manualNutritionTasks.map(task => ({
+          id: `schedule_meal_${task.id}`,
+          food: task.title,
+          mealType: task.mealType || 'Other',
+          calories: task.calories || 300,
+          protein: task.protein || 20,
+          carbs: task.carbs || 30,
+          fats: task.fats || 10,
+          quantity: task.quantity || 1,
+          unit: task.unit || 'serving',
+          notes: task.description || '',
+          completed: task.completed || false,
+          source: 'schedule',
+          createdAt: task.createdAt
+        }));
         
-        // Update if completion status changed
-        if (JSON.stringify(updatedWorkouts) !== JSON.stringify(existingWorkouts)) {
-          setTodayData(prev => ({ ...prev, workouts: updatedWorkouts }));
-        }
-      } else {
-        // If NO auto-synced workout tasks exist, remove all auto-synced workouts from data
-        const existingWorkouts = todayData.workouts || [];
-        const nonAutoSyncedWorkouts = existingWorkouts.filter(workout => 
-          !workout.id || !workout.id.startsWith('schedule_workout_')
-        );
-        
-        if (nonAutoSyncedWorkouts.length !== existingWorkouts.length) {
-          setTodayData(prev => ({ ...prev, workouts: nonAutoSyncedWorkouts }));
-        }
-      }
-      
-      // Sync nutrition tasks to nutrition data - SAME LOGIC AS WORKOUTS
-      const nutritionTasks = todayTasks.filter(task => task.category === 'Nutrition');
-      const existingMeals = todayData.meals || [];
-      
-      if (nutritionTasks.length > 0) {
-        // Only sync meal tasks that were MANUALLY created in schedule (not auto-synced from nutrition)
-        // Auto-synced meal tasks have IDs that start with 'meal_'
-        // Manually created tasks have simple timestamp IDs
-        const manualNutritionTasks = nutritionTasks.filter(task => 
-          !task.id.startsWith('meal_') // Exclude auto-synced tasks
-        );
-        
-        if (manualNutritionTasks.length > 0) {
-          const mealData = manualNutritionTasks.map(task => {
-            // Parse description to extract calories if available
-            const caloriesMatch = task.description?.match(/(\d+) cal/);
-            return {
-              id: `schedule_meal_${task.id}`, // Prefix to identify schedule-originated meals
-              food: task.title,
-              mealType: task.mealType || 'Other',
-              calories: task.calories || (caloriesMatch ? parseInt(caloriesMatch[1]) : 500),
-              protein: task.protein || Math.round((task.calories || 500) * 0.25 / 4),
-              carbs: task.carbs || Math.round((task.calories || 500) * 0.45 / 4),
-              fats: task.fats || Math.round((task.calories || 500) * 0.30 / 9),
-              quantity: task.quantity || 1,
-              unit: task.unit || 'serving',
-              notes: task.description || '',
-              completed: task.completed || false, // Sync completion status
-              source: 'schedule',
-              createdAt: task.createdAt
-            };
-          });
-          
-          // Update meal data - only add schedule-originated meals
-          const nonScheduleMeals = existingMeals.filter(meal => !meal.id.startsWith('schedule_meal_'));
-          const mergedMeals = [...nonScheduleMeals, ...mealData];
-          
-          // Only update if data has actually changed
-          const existingScheduleMeals = existingMeals.filter(meal => meal.id && meal.id.startsWith('schedule_meal_'));
-          const mealDataChanged = JSON.stringify(existingScheduleMeals) !== JSON.stringify(mealData);
-          
-          if (mealDataChanged) {
-            setTodayData(prev => ({ ...prev, meals: mergedMeals }));
-          }
-        } else {
-          // Remove schedule-originated meals if no manual nutrition tasks exist
-          const nonScheduleMeals = existingMeals.filter(meal => !meal.id.startsWith('schedule_meal_'));
-          if (nonScheduleMeals.length !== existingMeals.length) {
-            setTodayData(prev => ({ ...prev, meals: nonScheduleMeals }));
-          }
-        }
-      } else {
-        // Remove all schedule meals if no nutrition tasks
-        const nonScheduleMeals = existingMeals.filter(meal => !meal.id.startsWith('schedule_meal_'));
-        if (nonScheduleMeals.length !== existingMeals.length) {
-          setTodayData(prev => ({ ...prev, meals: nonScheduleMeals }));
-        }
-      }
-
-      // Also sync completion status for auto-synced meal tasks back to meal data
-      const autoSyncedMealTasks = todayTasks.filter(task => 
-        task.category === 'Nutrition' && task.id.startsWith('meal_')
-      );
-      
-      if (autoSyncedMealTasks.length > 0) {
         const existingMeals = todayData.meals || [];
-        const updatedMeals = existingMeals.map(meal => {
-          // Find corresponding task in schedule using mealData.id
-          const scheduleTask = autoSyncedMealTasks.find(task => 
-            task.mealData?.id === meal.id
-          );
-          
-          if (scheduleTask && meal.completed !== scheduleTask.completed) {
-            return { ...meal, completed: scheduleTask.completed };
-          }
-          return meal;
-        });
-        
-        // Update if completion status changed
-        if (JSON.stringify(updatedMeals) !== JSON.stringify(existingMeals)) {
-          setTodayData(prev => ({ ...prev, meals: updatedMeals }));
-        }
-      } else {
-        // If NO auto-synced meal tasks exist, remove all auto-synced meals from data
-        const existingMeals = todayData.meals || [];
-        const nonAutoSyncedMeals = existingMeals.filter(meal => 
-          !meal.id || !meal.id.startsWith('schedule_meal_')
+        const nonScheduleMeals = existingMeals.filter(meal => 
+          !meal.id?.startsWith('schedule_meal_')
         );
         
-        if (nonAutoSyncedMeals.length !== existingMeals.length) {
-          setTodayData(prev => ({ ...prev, meals: nonAutoSyncedMeals }));
-        }
+        setTodayData(prev => ({ 
+          ...prev, 
+          meals: [...nonScheduleMeals, ...mealData] 
+        }));
       }
     } catch (error) {
       console.error('Error syncing schedule to data:', error);
     } finally {
-      syncInProgress.current = false; // Reset sync in progress
+      syncInProgress.current = false;
     }
-  }, [today, user?.uid, todayData.workouts, todayData.meals]);
+  }, [today, user?.uid, todayData]);
 
-  const updateTodayData = async (field, value) => {
+  const updateTodayData = useCallback(async (field, value) => {
     try {
       const todayStr = format(today, 'yyyy-MM-dd');
       const dayRef = doc(db, 'users', user.uid, 'dailyLogs', todayStr);
       
       const updateData = {
         [field]: value,
-        date: todayStr, // Ensure date is always set
+        date: todayStr,
         updatedAt: new Date().toISOString()
       };
       
@@ -373,7 +225,6 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       setTodayData(prev => ({ ...prev, [field]: value }));
       toast.success('Data updated successfully!');
     } catch (updateError) {
-      // If document doesn't exist, create it with the correct document ID
       console.log('Document does not exist, creating new one:', updateError.message);
       try {
         const todayStr = format(today, 'yyyy-MM-dd');
@@ -395,65 +246,13 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         toast.error('Failed to save data');
       }
     }
-  };
+  }, [today, user?.uid]);
 
-  // Function to sync workout with weekly schedule
+  // Simplified workout update handler
   const handleWorkoutUpdate = useCallback(async (workouts) => {
     await updateTodayData('workouts', workouts);
     
-    // Also update weekly schedule
-    const todayName = format(today, 'EEEE'); // Monday, Tuesday, etc.
-    const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-    
-    try {
-      // Get existing weekly schedule
-      const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
-      let weeklyTasks = savedSchedule ? JSON.parse(savedSchedule) : {};
-      
-      // Update workout-related tasks for today
-      if (!weeklyTasks[todayName]) {
-        weeklyTasks[todayName] = [];
-      }
-      
-      // Get existing auto-synced workout tasks
-      const existingAutoSyncTasks = weeklyTasks[todayName].filter(task => 
-        task.category === 'Workout' && task.id.startsWith('workout_')
-      );
-      
-      // Remove ALL auto-synced workout tasks for today (but preserve manually created ones)
-      weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => 
-        task.category !== 'Workout' || !task.id.startsWith('workout_')
-      );
-      
-      // Add new workout tasks (this handles both additions and deletions)
-      workouts.forEach((workout, index) => {
-        // Try to find existing task with same exercise name to preserve ID
-        const existingTask = existingAutoSyncTasks.find(task => 
-          task.title === workout.exercise
-        );
-        
-        weeklyTasks[todayName].push({
-          id: existingTask ? existingTask.id : `workout_${Date.now()}_${index}`, // Preserve existing ID or create new
-          title: workout.exercise,
-          category: 'Workout',
-          description: `${workout.sets} sets × ${workout.reps} reps`,
-          completed: workout.completed || false, // Sync completion status
-          createdAt: existingTask ? existingTask.createdAt : new Date().toISOString() // Preserve creation time
-        });
-      });
-      
-      // Save updated schedule
-      localStorage.setItem(`schedule_${user.uid}_${weekKey}`, JSON.stringify(weeklyTasks));
-    } catch (error) {
-      console.error('Error syncing workout with schedule:', error);
-    }
-  }, [today, user?.uid, updateTodayData]);
-
-  // Function to sync nutrition with weekly schedule
-  const handleNutritionUpdate = useCallback(async (meals) => {
-    await updateTodayData('meals', meals);
-    
-    // Also update weekly schedule - SAME LOGIC AS WORKOUTS
+    // Simple sync to weekly schedule
     const todayName = format(today, 'EEEE');
     const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     
@@ -465,40 +264,60 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         weeklyTasks[todayName] = [];
       }
       
-      // Get existing auto-synced meal tasks
-      const existingAutoSyncTasks = weeklyTasks[todayName].filter(task => 
-        task.category === 'Nutrition' && task.id.startsWith('meal_')
-      );
-      
-      // Remove existing auto-synced nutrition tasks for today (but preserve manually created ones)
+      // Remove existing auto-synced workout tasks
       weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => 
-        task.category !== 'Nutrition' || !task.id.startsWith('meal_')
+        !(task.category === 'Workout' && task.id.startsWith('workout_'))
       );
       
-      // Add new meal tasks (this handles both additions and deletions)
-      meals.forEach((meal, index) => {
-        // Try to find existing task with same food name to preserve ID
-        const existingTask = existingAutoSyncTasks.find(task => 
-          task.title === (meal.food || meal.name)
-        );
-        
+      // Add new workout tasks
+      workouts.forEach((workout, index) => {
         weeklyTasks[todayName].push({
-          id: existingTask ? existingTask.id : `meal_${Date.now()}_${index}`, // Preserve existing ID or create new
+          id: `workout_${Date.now()}_${index}`,
+          title: workout.exercise,
+          category: 'Workout',
+          description: `${workout.sets} sets × ${workout.reps} reps`,
+          completed: workout.completed || false,
+          createdAt: new Date().toISOString()
+        });
+      });
+      
+      localStorage.setItem(`schedule_${user.uid}_${weekKey}`, JSON.stringify(weeklyTasks));
+    } catch (error) {
+      console.error('Error syncing workout with schedule:', error);
+    }
+  }, [today, user?.uid, updateTodayData]);
+
+  // Simplified nutrition update handler
+  const handleNutritionUpdate = useCallback(async (meals) => {
+    await updateTodayData('meals', meals);
+    
+    // Simple sync to weekly schedule
+    const todayName = format(today, 'EEEE');
+    const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    
+    try {
+      const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
+      let weeklyTasks = savedSchedule ? JSON.parse(savedSchedule) : {};
+      
+      if (!weeklyTasks[todayName]) {
+        weeklyTasks[todayName] = [];
+      }
+      
+      // Remove existing auto-synced nutrition tasks
+      weeklyTasks[todayName] = weeklyTasks[todayName].filter(task => 
+        !(task.category === 'Nutrition' && task.id.startsWith('meal_'))
+      );
+      
+      // Add new meal tasks
+      meals.forEach((meal, index) => {
+        weeklyTasks[todayName].push({
+          id: `meal_${Date.now()}_${index}`,
           title: meal.food || meal.name,
           category: 'Nutrition',
           description: `${meal.calories} cal (${meal.mealType})`,
-          completed: meal.completed || false, // Sync completion status
-          createdAt: existingTask ? existingTask.createdAt : new Date().toISOString(), // Preserve creation time
-          // Store meal data for reverse sync
-          mealData: {
-            id: meal.id,
-            food: meal.food,
-            mealType: meal.mealType,
-            calories: meal.calories,
-            protein: meal.protein,
-            carbs: meal.carbs,
-            fats: meal.fats
-          }
+          completed: meal.completed || false,
+          createdAt: new Date().toISOString(),
+          mealData: { id: meal.id }
         });
       });
       
@@ -604,7 +423,7 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <button
                   onClick={() => handleTabChange('workouts')}
-                  className="btn-primary"
+                  className="btn-secondary"
                 >
                   Log Workout
                 </button>
@@ -727,20 +546,11 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
               </div>
               <div className="card">
                 <h3 className="text-lg font-semibold mb-4">Weekly Overview</h3>
-                <div className="space-y-4">
-                  {weekDays.map((day, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <span className="font-medium">{format(day, 'EEE, MMM d')}</span>
-                      <div className="flex space-x-2">
-                        <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">
-                          ✓ Workout
-                        </span>
-                        <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                          ✓ Nutrition
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Progress tracking coming soon...</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    View your workout consistency and nutrition adherence
+                  </p>
                 </div>
               </div>
             </div>
