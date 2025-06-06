@@ -99,7 +99,7 @@ const ProfileEditor = ({ userProfile, onProfileUpdate, userId }) => {
     <div className="space-y-6">
       {/* Profile Header */}
       <div className="card max-w-4xl">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 space-y-4 sm:space-y-0">
           <div className="flex items-center space-x-4">
             <img
               src={
@@ -121,22 +121,22 @@ const ProfileEditor = ({ userProfile, onProfileUpdate, userId }) => {
             </div>
           </div>
           
-          <div className="flex space-x-2">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 w-full sm:w-auto">
             {!isEditing ? (
               <button
                 onClick={() => setIsEditing(true)}
-                className="btn-primary flex items-center"
+                className="btn-primary flex items-center justify-center text-sm sm:text-base px-3 py-2 sm:px-4 sm:py-2"
               >
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Profile
               </button>
             ) : (
-              <div className="flex space-x-2">
+              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                 <button
                   type="submit"
                   form="profile-form"
                   disabled={isLoading || !isDirty}
-                  className="btn-primary flex items-center disabled:opacity-50"
+                  className="btn-primary flex items-center justify-center disabled:opacity-50 text-sm sm:text-base px-3 py-2 sm:px-4 sm:py-2"
                 >
                   <Save className="h-4 w-4 mr-2" />
                   {isLoading ? 'Saving...' : 'Save'}
@@ -144,7 +144,7 @@ const ProfileEditor = ({ userProfile, onProfileUpdate, userId }) => {
                 <button
                   onClick={handleCancel}
                   disabled={isLoading}
-                  className="btn-secondary flex items-center"
+                  className="btn-secondary flex items-center justify-center text-sm sm:text-base px-3 py-2 sm:px-4 sm:py-2"
                 >
                   <X className="h-4 w-4 mr-2" />
                   Cancel

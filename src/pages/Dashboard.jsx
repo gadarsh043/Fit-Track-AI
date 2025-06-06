@@ -420,16 +420,16 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
             {/* Quick Actions */}
             <div className="card">
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                 <button
                   onClick={() => handleTabChange('workouts')}
-                  className="btn-secondary"
+                  className="btn-secondary text-sm px-3 py-2 md:px-4 md:py-2"
                 >
                   Log Workout
                 </button>
                 <button
                   onClick={() => handleTabChange('nutrition')}
-                  className="btn-secondary"
+                  className="btn-secondary text-sm px-3 py-2 md:px-4 md:py-2"
                 >
                   Add Meal
                 </button>
@@ -440,7 +440,7 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
                 />
                 <button
                   onClick={() => handleTabChange('progress')}
-                  className="btn-secondary"
+                  className="btn-secondary text-sm px-3 py-2 md:px-4 md:py-2"
                 >
                   View Progress
                 </button>
@@ -452,23 +452,22 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       case 'workouts':
         return (
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Workout Tracking</h1>
-              <div className="flex space-x-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 space-y-3 sm:space-y-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Workout Tracking</h1>
+              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                 <button
                   onClick={() => syncScheduleToData()}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-2"
                   title="Sync with weekly schedule"
                 >
                   🔄 Sync Schedule
                 </button>
                 <button
                   onClick={() => {
-                    // Refresh data from Firebase
                     loadTodayData();
                     toast.success('Data refreshed!');
                   }}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-2"
                   title="Refresh workout data"
                 >
                   📁 Refresh Data
@@ -485,23 +484,22 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       case 'nutrition':
         return (
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Nutrition Tracking</h1>
-              <div className="flex space-x-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 space-y-3 sm:space-y-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Nutrition Tracking</h1>
+              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                 <button
                   onClick={() => syncScheduleToData()}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-2"
                   title="Sync with weekly schedule"
                 >
                   🔄 Sync Schedule
                 </button>
                 <button
                   onClick={() => {
-                    // Refresh data from Firebase
                     loadTodayData();
                     toast.success('Data refreshed!');
                   }}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-2"
                   title="Refresh nutrition data"
                 >
                   📁 Refresh Data
@@ -518,11 +516,11 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       case 'schedule':
         return (
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Weekly Schedule</h1>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 space-y-3 sm:space-y-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Weekly Schedule</h1>
               <button
                 onClick={() => syncScheduleToData()}
-                className="btn-secondary text-sm"
+                className="btn-secondary text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-2"
                 title="Sync with workout/nutrition data"
               >
                 🔄 Sync Data

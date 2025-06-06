@@ -399,98 +399,117 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
 
       {/* Daily Schedule Grid - Redesigned */}
       <div className="card">
-        <div className="grid grid-cols-7 gap-2 mb-4">
-          {/* Day Headers */}
+        {/* Tasks Layout - Unified Design */}
+        <div className="space-y-3">
           {daysOfWeek.map((day, index) => {
+            const dayTasks = getTasksForDay(day);
             const dayDate = addDays(currentWeek, index);
             const todayHighlight = isTodayDate(dayDate);
             
             return (
               <div 
                 key={day} 
-                className={`text-center p-3 rounded-lg border-2 transition-all ${
-                  todayHighlight 
-                    ? 'bg-primary-50 border-primary-200 text-primary-900' 
-                    : 'bg-gray-50 border-gray-200'
+                className={`border rounded-lg overflow-hidden ${
+                  todayHighlight ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'
                 }`}
               >
-                <h4 className="font-bold text-sm">{day}</h4>
-                <p className="text-xs text-gray-600">{format(dayDate, 'MMM d')}</p>
-                {todayHighlight && (
-                  <p className="text-xs text-primary-600 font-bold">Today</p>
-                )}
-                <div className="mt-2 relative">
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        setSelectedDay(day);
-                        setModalType(e.target.value);
-                        setSelectedCategory(e.target.value === 'workout' ? 'Workout' : e.target.value === 'nutrition' ? 'Nutrition' : 'Other');
-                        setIsAddingTask(true);
-                        e.target.value = ''; // Reset dropdown
-                      }
-                    }}
-                    className="w-full py-1 px-2 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-                  >
-                    <option value="">+ Add Task</option>
-                    <option value="basic">📝 Basic Task</option>
-                    <option value="workout">💪 Workout</option>
-                    <option value="nutrition">🍎 Nutrition</option>
-                  </select>
+                {/* Day Header */}
+                <div className={`p-3 flex items-center justify-between ${
+                  todayHighlight ? 'bg-green-50' : 'bg-gray-50'
+                }`}>
+                  <div>
+                    <h4 className="font-semibold text-gray-900">{day}</h4>
+                    <p className="text-sm text-gray-600">{format(dayDate, 'MMM d')}</p>
+                    {todayHighlight && (
+                      <p className="text-xs text-green-600 font-medium">🟢 Today</p>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">
+                      {dayTasks.filter(t => t.completed).length}/{dayTasks.length} completed
+                    </span>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedDay(day);
+                          setModalType(e.target.value);
+                          setSelectedCategory(e.target.value === 'workout' ? 'Workout' : e.target.value === 'nutrition' ? 'Nutrition' : 'Other');
+                          setIsAddingTask(true);
+                          e.target.value = ''; // Reset dropdown
+                        }
+                      }}
+                      className="p-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
+                    >
+                      <option value="">+</option>
+                      <option value="basic">📝 Basic</option>
+                      <option value="workout">💪 Workout</option>
+                      <option value="nutrition">🍎 Nutrition</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
 
-        {/* Tasks Layout - Responsive Design */}
-        <div className="space-y-6">
-          {/* Desktop View - Table Layout */}
-          <div className="hidden lg:block">
-            <div className="grid grid-cols-7 gap-2">
-              {daysOfWeek.map((day) => {
-                const dayTasks = getTasksForDay(day);
-                
-                return (
-                  <div key={day} className="min-h-[200px] space-y-1">
-                    {dayTasks.length === 0 ? (
-                      <div className="h-16 flex items-center justify-center text-gray-400 text-xs italic border-2 border-dashed border-gray-200 rounded-lg">
-                        No tasks
-                      </div>
-                    ) : (
-                      dayTasks.map((task) => (
+                {/* Tasks List */}
+                <div className="p-3 space-y-2">
+                  {dayTasks.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic text-center py-4">No tasks planned</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {dayTasks.map((task) => (
                         <div
                           key={task.id}
-                          className={`group p-2 rounded-md border text-xs transition-all hover:shadow-sm ${
+                          className={`p-2 rounded-lg border ${
                             task.completed 
                               ? 'bg-green-50 border-green-200' 
-                              : 'bg-white border-gray-200 hover:border-gray-300'
+                              : 'bg-gray-50 border-gray-200'
                           }`}
                         >
-                          <div className="flex items-start justify-between mb-1">
-                            <button
-                              onClick={() => toggleTask(day, task.id)}
-                              className={`w-3 h-3 rounded border flex items-center justify-center flex-shrink-0 ${
-                                task.completed
-                                  ? 'bg-green-500 border-green-500 text-white'
-                                  : 'border-gray-300 hover:border-green-500'
-                              }`}
-                            >
-                              {task.completed && <Check className="h-2 w-2" />}
-                            </button>
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start space-x-2 flex-1">
+                              <button
+                                onClick={() => toggleTask(day, task.id)}
+                                className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center ${
+                                  task.completed
+                                    ? 'bg-green-500 border-green-500 text-white'
+                                    : 'border-gray-300 hover:border-green-500'
+                                }`}
+                              >
+                                {task.completed && <Check className="h-3 w-3" />}
+                              </button>
+                              
+                              <div className="flex-1">
+                                <p className={`text-sm font-medium ${
+                                  task.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                                }`}>
+                                  {task.title}
+                                </p>
+                                
+                                <div className="flex items-center space-x-2 mt-1">
+                                  <span className={`px-2 py-1 text-xs rounded ${
+                                    getCategoryColor(task.category)
+                                  }`}>
+                                    {task.category}
+                                  </span>
+                                </div>
+                                
+                                {task.description && (
+                                  <p className="text-xs text-gray-600 mt-1">{task.description}</p>
+                                )}
+                              </div>
+                            </div>
                             
-                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <div className="flex items-center space-x-1 ml-2">
                               <div className="relative">
                                 <button
                                   onClick={() => setShowMoveDropdown(showMoveDropdown === task.id ? null : task.id)}
-                                  className="text-gray-400 hover:text-blue-500"
+                                  className="text-gray-400 hover:text-blue-600"
                                   title="Move task"
                                 >
-                                  <ArrowRight className="h-3 w-3" />
+                                  <ArrowRight className="h-4 w-4" />
                                 </button>
                                 
                                 {showMoveDropdown === task.id && (
-                                  <div className="absolute right-0 top-4 z-50 bg-white border border-gray-200 rounded-md shadow-lg min-w-[120px]">
+                                  <div className="absolute right-0 top-6 z-50 bg-white border border-gray-200 rounded-md shadow-lg min-w-[120px]">
                                     <div className="py-1">
                                       <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100">
                                         Move to:
@@ -511,219 +530,38 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                               
                               <button
                                 onClick={() => reorderTask(day, task.id, 'up')}
-                                className="text-gray-400 hover:text-blue-500"
+                                className="text-gray-400 hover:text-blue-600"
                                 title="Move up"
                                 disabled={dayTasks.indexOf(task) === 0}
                               >
-                                <ChevronUp className="h-3 w-3" />
+                                <ChevronUp className="h-4 w-4" />
                               </button>
                               
                               <button
                                 onClick={() => reorderTask(day, task.id, 'down')}
-                                className="text-gray-400 hover:text-blue-500"
+                                className="text-gray-400 hover:text-blue-600"
                                 title="Move down"
                                 disabled={dayTasks.indexOf(task) === dayTasks.length - 1}
                               >
-                                <ChevronDown className="h-3 w-3" />
+                                <ChevronDown className="h-4 w-4" />
                               </button>
                               
                               <button
                                 onClick={() => removeTask(day, task.id)}
-                                className="text-gray-400 hover:text-red-500"
+                                className="text-gray-400 hover:text-red-600"
                               >
                                 <X className="h-3 w-3" />
                               </button>
                             </div>
                           </div>
-                          
-                          <p className={`font-medium mb-1 leading-tight ${
-                            task.completed ? 'line-through text-gray-500' : 'text-gray-900'
-                          }`}>
-                            {task.title}
-                          </p>
-                          
-                          <span className={`inline-block px-1.5 py-0.5 text-xs rounded ${
-                            getCategoryColor(task.category)
-                          }`}>
-                            {task.category}
-                          </span>
-                          
-                          {task.description && (
-                            <p className="text-xs text-gray-600 mt-1 leading-tight">{task.description}</p>
-                          )}
                         </div>
-                      ))
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Mobile/Tablet View - Accordion Style */}
-          <div className="lg:hidden space-y-3">
-            {daysOfWeek.map((day, index) => {
-              const dayTasks = getTasksForDay(day);
-              const dayDate = addDays(currentWeek, index);
-              const todayHighlight = isTodayDate(dayDate);
-              
-              return (
-                <div 
-                  key={day} 
-                  className={`border rounded-lg overflow-hidden ${
-                    todayHighlight ? 'border-primary-300' : 'border-gray-200'
-                  }`}
-                >
-                  {/* Day Header */}
-                  <div className={`p-3 flex items-center justify-between ${
-                    todayHighlight ? 'bg-primary-50' : 'bg-gray-50'
-                  }`}>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{day}</h4>
-                      <p className="text-sm text-gray-600">{format(dayDate, 'MMM d')}</p>
-                      {todayHighlight && (
-                        <p className="text-xs text-primary-600 font-medium">Today</p>
-                      )}
+                      ))}
                     </div>
-                    
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs text-gray-500">
-                        {dayTasks.filter(t => t.completed).length}/{dayTasks.length} completed
-                      </span>
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            setSelectedDay(day);
-                            setModalType(e.target.value);
-                            setSelectedCategory(e.target.value === 'workout' ? 'Workout' : e.target.value === 'nutrition' ? 'Nutrition' : 'Other');
-                            setIsAddingTask(true);
-                            e.target.value = ''; // Reset dropdown
-                          }
-                        }}
-                        className="p-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50"
-                      >
-                        <option value="">+</option>
-                        <option value="basic">📝 Basic</option>
-                        <option value="workout">💪 Workout</option>
-                        <option value="nutrition">🍎 Nutrition</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Tasks List */}
-                  <div className="p-3 space-y-2">
-                    {dayTasks.length === 0 ? (
-                      <p className="text-sm text-gray-500 italic text-center py-4">No tasks planned</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {dayTasks.map((task) => (
-                          <div
-                            key={task.id}
-                            className={`p-2 rounded-lg border ${
-                              task.completed 
-                                ? 'bg-green-50 border-green-200' 
-                                : 'bg-gray-50 border-gray-200'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-start space-x-2 flex-1">
-                                <button
-                                  onClick={() => toggleTask(day, task.id)}
-                                  className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center ${
-                                    task.completed
-                                      ? 'bg-green-500 border-green-500 text-white'
-                                      : 'border-gray-300 hover:border-green-500'
-                                  }`}
-                                >
-                                  {task.completed && <Check className="h-3 w-3" />}
-                                </button>
-                                
-                                <div className="flex-1">
-                                  <p className={`text-sm font-medium ${
-                                    task.completed ? 'line-through text-gray-500' : 'text-gray-900'
-                                  }`}>
-                                    {task.title}
-                                  </p>
-                                  
-                                  <div className="flex items-center space-x-2 mt-1">
-                                    <span className={`px-2 py-1 text-xs rounded ${
-                                      getCategoryColor(task.category)
-                                    }`}>
-                                      {task.category}
-                                    </span>
-                                  </div>
-                                  
-                                  {task.description && (
-                                    <p className="text-xs text-gray-600 mt-1">{task.description}</p>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center space-x-1 ml-2">
-                                <div className="relative">
-                                  <button
-                                    onClick={() => setShowMoveDropdown(showMoveDropdown === task.id ? null : task.id)}
-                                    className="text-gray-400 hover:text-blue-600"
-                                    title="Move task"
-                                  >
-                                    <ArrowRight className="h-4 w-4" />
-                                  </button>
-                                  
-                                  {showMoveDropdown === task.id && (
-                                    <div className="absolute right-0 top-6 z-50 bg-white border border-gray-200 rounded-md shadow-lg min-w-[120px]">
-                                      <div className="py-1">
-                                        <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100">
-                                          Move to:
-                                        </div>
-                                        {daysOfWeek.filter(d => d !== day).map((targetDay) => (
-                                          <button
-                                            key={targetDay}
-                                            onClick={() => moveTask(day, task.id, targetDay)}
-                                            className="w-full text-left px-3 py-1 text-xs hover:bg-gray-50"
-                                          >
-                                            {targetDay}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                <button
-                                  onClick={() => reorderTask(day, task.id, 'up')}
-                                  className="text-gray-400 hover:text-blue-600"
-                                  title="Move up"
-                                  disabled={dayTasks.indexOf(task) === 0}
-                                >
-                                  <ChevronUp className="h-4 w-4" />
-                                </button>
-                                
-                                <button
-                                  onClick={() => reorderTask(day, task.id, 'down')}
-                                  className="text-gray-400 hover:text-blue-600"
-                                  title="Move down"
-                                  disabled={dayTasks.indexOf(task) === dayTasks.length - 1}
-                                >
-                                  <ChevronDown className="h-4 w-4" />
-                                </button>
-                                
-                                <button
-                                  onClick={() => removeTask(day, task.id)}
-                                  className="text-gray-400 hover:text-red-600"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

@@ -19,23 +19,23 @@
 @layer components {
   .btn-primary {
     background-color: var(--primary-color);
-    @apply hover:bg-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+    @apply hover:bg-primary-600 text-white font-medium py-2 px-4 md:py-2 md:px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 text-sm md:text-base;
   }
   
   .btn-secondary {
     background-color: var(--secondary-color);
-    @apply hover:bg-secondary-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2;
+    @apply hover:bg-secondary-600 text-white font-medium py-2 px-4 md:py-2 md:px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2 text-sm md:text-base;
   }
   
   .btn-highlight {
     background-color: var(--highlight-color);
     border: 1px solid var(--secondary-color);
-    @apply hover:bg-secondary-100 text-neutral-dark font-medium py-2 px-4 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply hover:bg-secondary-100 text-neutral-dark font-medium py-2 px-4 md:py-2 md:px-4 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 text-sm md:text-base;
   }
   
   .btn-error {
     background-color: var(--error-color);
-    @apply hover:opacity-90 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply hover:opacity-90 text-white font-medium py-2 px-4 md:py-2 md:px-4 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 text-sm md:text-base;
   }
   
   .input-field {
