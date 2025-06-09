@@ -153,22 +153,32 @@ users/{uid}/
 │       ├── currentWeight
 │       └── photoURL (from Google OAuth)
 ├── schedules/
-│   └── weekly/
-│       ├── monday: { workouts: [], meals: [], waterGoal: 4000 }
-│       ├── tuesday: { ... }
-│       └── ...
+│   └── {YYYY-MM-DD}/        # Week-specific schedules (Monday date of week)
+│       ├── Monday: []       # Array of tasks for Monday
+│       ├── Tuesday: []      # Array of tasks for Tuesday
+│       ├── Wednesday: []    # Array of tasks for Wednesday
+│       ├── Thursday: []     # Array of tasks for Thursday
+│       ├── Friday: []       # Array of tasks for Friday
+│       ├── Saturday: []     # Array of tasks for Saturday
+│       └── Sunday: []       # Array of tasks for Sunday
 ├── dailyLogs/
-│   └── {date}/
-│       ├── workouts: []
-│       ├── meals: []
-│       ├── water: number
-│       └── weight: number
+│   └── {YYYY-MM-DD}/        # Daily activity logs
+│       ├── workouts: []     # Array of completed workouts
+│       ├── meals: []        # Array of logged meals  
+│       ├── water: number    # Water intake in ml
+│       └── weight: number   # Body weight in kg
 └── weeklyReports/ (future AI feature)
     └── {week}/
         ├── summary
         ├── recommendations
         └── metrics
 ```
+
+**Key Features:**
+- 🔄 **Real-time sync** across all devices
+- ☁️ **Cloud-only storage** - no localStorage dependencies  
+- 📅 **Date-based organization** for easy querying
+- 🔗 **Automatic sync** between schedules and daily logs
 
 ## 🎨 Key Components
 
@@ -259,6 +269,42 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 For support, email support@fittrack-ai.com or join our community Discord.
+
+## 🔧 Troubleshooting
+
+### Data Not Syncing Between Devices
+
+The app now uses **pure Firebase Firestore** for all data storage, ensuring seamless synchronization across all devices. No localStorage dependencies!
+
+**To verify sync is working:**
+
+1. **Log out and log back in** on both devices to ensure fresh authentication
+2. **Add a workout, meal, or schedule task** on one device
+3. **Check if it appears immediately** on the other device (should be instant)
+4. **Refresh the page** if needed to trigger a data reload
+
+**Data Storage (Firebase Only):**
+- ✅ **User Profile**: `users/{uid}/profile/data`
+- ✅ **Daily Logs**: `users/{uid}/dailyLogs/{YYYY-MM-DD}`  
+- ✅ **Weekly Schedules**: `users/{uid}/schedules/{YYYY-MM-DD}`
+- ❌ **localStorage**: Completely removed for clean multi-device sync
+
+**All Features Work Across Devices:**
+- ✅ **Schedule Management**: Add, edit, delete, move tasks
+- ✅ **Task Editing**: Click edit button to modify existing tasks
+- ✅ **Rich Task Display**: Shows reps, calories, descriptions, and notes separately
+- ✅ **Copy/Paste Days**: Copy tasks from one day to another (📋/📥 buttons)
+- ✅ **Copy/Paste Weeks**: Copy schedules between different weeks
+- ✅ **Workout/Nutrition Sync**: Automatic bidirectional sync
+- ✅ **Task Completion**: Mark tasks as complete/incomplete
+- ✅ **Progress Tracking**: View data from any device
+- ✅ **Clean Interface**: Simplified layout with better organization
+
+If you still experience sync issues:
+1. Check your internet connection
+2. Verify Firebase configuration in `.env` file
+3. Check browser console for any errors
+4. Ensure you're logged in with the same Google account on both devices
 
 ---
 

@@ -33,8 +33,8 @@ export const AuthProvider = ({ children }) => {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       
-      // Check if user profile exists, if not create one
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      // Check if user profile exists at the correct path, if not create one
+      const userDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
       if (!userDoc.exists()) {
         await createUserProfile(user);
       }
@@ -88,19 +88,6 @@ export const AuthProvider = ({ children }) => {
       };
 
       await setDoc(doc(db, 'users', user.uid, 'profile', 'data'), userProfile);
-      
-      // Create initial schedule placeholder
-      const initialSchedule = {
-        monday: { workouts: [], meals: [], waterGoal: 4000 },
-        tuesday: { workouts: [], meals: [], waterGoal: 4000 },
-        wednesday: { workouts: [], meals: [], waterGoal: 4000 },
-        thursday: { workouts: [], meals: [], waterGoal: 4000 },
-        friday: { workouts: [], meals: [], waterGoal: 4000 },
-        saturday: { workouts: [], meals: [], waterGoal: 4000 },
-        sunday: { workouts: [], meals: [], waterGoal: 4000 }
-      };
-
-      await setDoc(doc(db, 'users', user.uid, 'schedules', 'weekly'), initialSchedule);
       
       return userProfile;
     } catch (error) {

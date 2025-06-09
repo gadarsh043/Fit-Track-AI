@@ -5,6 +5,8 @@ import PropTypes from 'prop-types';
 import { format, addDays, startOfWeek, addWeeks, subWeeks } from 'date-fns';
 import toast from 'react-hot-toast';
 import { commonFoods, mealTypes, workoutTypes, machines } from '../../constants/foodData';
+import { getDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
   const [currentWeek, setCurrentWeek] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -15,6 +17,8 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
   const [copiedWeek, setCopiedWeek] = useState(null);
   const [showMoveDropdown, setShowMoveDropdown] = useState(null);
   const [modalType, setModalType] = useState('basic');
+  const [editingTask, setEditingTask] = useState(null);
+  const [copiedDay, setCopiedDay] = useState(null);
   
   const { register, handleSubmit, reset, formState: { errors }, setValue } = useForm();
 
@@ -35,14 +39,55 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
   ];
 
   const loadWeeklySchedule = useCallback(async () => {
-    // Mock data structure - replace with actual Firebase call
+    // Load schedule from Firebase - no localStorage fallbacks
     const weekKey = format(currentWeek, 'yyyy-MM-dd');
-    const savedSchedule = localStorage.getItem(`schedule_${userId}_${weekKey}`);
     
-    if (savedSchedule) {
-      setWeeklyTasks(JSON.parse(savedSchedule));
-    } else {
-      setWeeklyTasks({});
+    try {
+      // Clean up old weekly template if it exists (one-time cleanup)
+      try {
+        const oldWeeklyDoc = await getDoc(doc(db, 'users', userId, 'schedules', 'weekly'));
+        if (oldWeeklyDoc.exists()) {
+          // Delete the old template document
+          await deleteDoc(doc(db, 'users', userId, 'schedules', 'weekly'));
+          console.log('Cleaned up old weekly template document');
+        }
+      } catch (cleanupError) {
+        console.log('No old weekly template to clean up:', cleanupError.message);
+      }
+      
+      // Get the specific week's schedule from Firebase
+      const weekScheduleDoc = await getDoc(doc(db, 'users', userId, 'schedules', weekKey));
+      
+      if (weekScheduleDoc.exists()) {
+        setWeeklyTasks(weekScheduleDoc.data());
+      } else {
+        // Create default empty structure for new weeks
+        const defaultWeekStructure = {
+          Monday: [],
+          Tuesday: [],
+          Wednesday: [],
+          Thursday: [],
+          Friday: [],
+          Saturday: [],
+          Sunday: []
+        };
+        setWeeklyTasks(defaultWeekStructure);
+        
+        // Save the default structure to Firebase immediately
+        await setDoc(doc(db, 'users', userId, 'schedules', weekKey), defaultWeekStructure);
+      }
+    } catch (error) {
+      console.error('Error loading weekly schedule from Firebase:', error);
+      // If Firebase fails, at least set an empty structure to prevent crashes
+      setWeeklyTasks({
+        Monday: [],
+        Tuesday: [],
+        Wednesday: [],
+        Thursday: [],
+        Friday: [],
+        Saturday: [],
+        Sunday: []
+      });
     }
   }, [currentWeek, userId]);
 
@@ -79,23 +124,31 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
 
   const saveWeeklySchedule = async (schedule) => {
     const weekKey = format(currentWeek, 'yyyy-MM-dd');
-    localStorage.setItem(`schedule_${userId}_${weekKey}`, JSON.stringify(schedule));
     
-    // Always trigger sync with workout/nutrition data
-    if (onUpdateSchedule) {
-      // Add a small delay to ensure localStorage is updated
-      setTimeout(() => {
-        onUpdateSchedule();
-      }, 50);
+    try {
+      // Save to Firebase only - no localStorage backup needed
+      await setDoc(doc(db, 'users', userId, 'schedules', weekKey), schedule);
+      
+      // Always trigger sync with workout/nutrition data
+      if (onUpdateSchedule) {
+        // Add a small delay to ensure data is saved
+        setTimeout(() => {
+          onUpdateSchedule();
+        }, 50);
+      }
+    } catch (error) {
+      console.error('Error saving weekly schedule to Firebase:', error);
+      toast.error('Failed to save schedule. Please check your internet connection.');
     }
   };
 
   const addTask = (data) => {
     let newTask = {
-      id: Date.now().toString(),
+      id: editingTask ? editingTask.id : Date.now().toString(), // Keep existing ID when editing
       category: selectedCategory || data.category,
-      completed: false,
-      createdAt: new Date().toISOString()
+      completed: editingTask ? editingTask.completed : false, // Preserve completion status when editing
+      createdAt: editingTask ? editingTask.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     // Handle different modal types
@@ -155,7 +208,9 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
 
     const updatedTasks = {
       ...weeklyTasks,
-      [selectedDay]: [...(weeklyTasks[selectedDay] || []), newTask]
+      [selectedDay]: editingTask 
+        ? weeklyTasks[selectedDay].map(task => task.id === editingTask.id ? newTask : task) // Update existing task
+        : [...(weeklyTasks[selectedDay] || []), newTask] // Add new task
     };
 
     setWeeklyTasks(updatedTasks);
@@ -165,7 +220,8 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
     setSelectedDay(null);
     setSelectedCategory(null);
     setModalType('basic');
-    toast.success('Task added successfully!');
+    setEditingTask(null);
+    toast.success(editingTask ? 'Task updated successfully!' : 'Task added successfully!');
   };
 
   const toggleTask = (day, taskId) => {
@@ -278,7 +334,7 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
     toast.success('Week copied to clipboard!');
   };
 
-  const pasteWeek = () => {
+  const pasteWeek = async () => {
     if (!copiedWeek) {
       toast.error('No week copied yet!');
       return;
@@ -287,16 +343,20 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
     // Generate new IDs for pasted tasks
     const pastedTasks = {};
     Object.keys(copiedWeek).forEach(day => {
-      pastedTasks[day] = copiedWeek[day].map(task => ({
-        ...task,
-        id: Date.now().toString() + Math.random(),
-        completed: false, // Reset completion status
-        createdAt: new Date().toISOString()
-      }));
+      if (Array.isArray(copiedWeek[day])) {
+        pastedTasks[day] = copiedWeek[day].map(task => ({
+          ...task,
+          id: Date.now().toString() + Math.random(),
+          completed: false, // Reset completion status
+          createdAt: new Date().toISOString()
+        }));
+      } else {
+        pastedTasks[day] = [];
+      }
     });
 
     setWeeklyTasks(pastedTasks);
-    saveWeeklySchedule(pastedTasks);
+    await saveWeeklySchedule(pastedTasks); // Save to Firebase immediately
     toast.success('Week pasted successfully!');
   };
 
@@ -308,15 +368,21 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
     }
   };
 
-  const getTasksForDay = (day) => weeklyTasks[day] || [];
+  const getTasksForDay = (day) => {
+    const dayTasks = weeklyTasks[day];
+    return Array.isArray(dayTasks) ? dayTasks : [];
+  };
 
   const getCompletionStats = () => {
     let totalTasks = 0;
     let completedTasks = 0;
 
     Object.values(weeklyTasks).forEach(dayTasks => {
-      totalTasks += dayTasks.length;
-      completedTasks += dayTasks.filter(task => task.completed).length;
+      // Ensure dayTasks is an array before processing
+      if (Array.isArray(dayTasks)) {
+        totalTasks += dayTasks.length;
+        completedTasks += dayTasks.filter(task => task.completed).length;
+      }
     });
 
     return { totalTasks, completedTasks, percentage: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0 };
@@ -330,11 +396,84 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
     return format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
   };
 
+  const editTask = (day, taskId) => {
+    const taskToEdit = weeklyTasks[day]?.find(task => task.id === taskId);
+    if (!taskToEdit) return;
+    
+    // Set the task data for editing
+    setEditingTask({ ...taskToEdit, day });
+    setSelectedDay(day);
+    setSelectedCategory(taskToEdit.category);
+    
+    // Determine modal type based on task category
+    if (taskToEdit.category === 'Workout') {
+      setModalType('workout');
+    } else if (taskToEdit.category === 'Nutrition') {
+      setModalType('nutrition');
+    } else {
+      setModalType('basic');
+    }
+    
+    // Pre-fill the form with existing data
+    reset({
+      title: taskToEdit.title,
+      description: taskToEdit.description || taskToEdit.notes || '',
+      exercise: taskToEdit.exercise || taskToEdit.title,
+      sets: taskToEdit.sets || '',
+      reps: taskToEdit.reps || '',
+      weight: taskToEdit.weight || '',
+      type: taskToEdit.type || '',
+      machine: taskToEdit.machine || '',
+      duration: taskToEdit.duration || '',
+      food: taskToEdit.food || taskToEdit.title,
+      quantity: taskToEdit.quantity || '',
+      unit: taskToEdit.unit || '',
+      mealType: taskToEdit.mealType || '',
+      protein: taskToEdit.protein || '',
+      carbs: taskToEdit.carbs || '',
+      fats: taskToEdit.fats || '',
+      calories: taskToEdit.calories || '',
+      notes: taskToEdit.notes || taskToEdit.description || ''
+    });
+    
+    setIsAddingTask(true);
+  };
+
+  const copyDay = (day) => {
+    const dayTasks = getTasksForDay(day);
+    setCopiedDay({ day, tasks: [...dayTasks] });
+    toast.success(`Copied ${dayTasks.length} tasks from ${day}!`);
+  };
+
+  const pasteDay = async (targetDay) => {
+    if (!copiedDay) {
+      toast.error('No day copied yet!');
+      return;
+    }
+
+    // Generate new IDs for pasted tasks
+    const pastedTasks = copiedDay.tasks.map(task => ({
+      ...task,
+      id: Date.now().toString() + Math.random(),
+      completed: false, // Reset completion status
+      createdAt: new Date().toISOString()
+    }));
+
+    const updatedTasks = {
+      ...weeklyTasks,
+      [targetDay]: [...(weeklyTasks[targetDay] || []), ...pastedTasks]
+    };
+
+    setWeeklyTasks(updatedTasks);
+    await saveWeeklySchedule(updatedTasks);
+    toast.success(`Pasted ${pastedTasks.length} tasks to ${targetDay}!`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Week Navigation */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center space-x-3">
           <button
             onClick={() => navigateWeek('prev')}
             className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
@@ -344,7 +483,7 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
           
           <div className="text-center">
             <h2 className="text-xl font-bold text-gray-900">
-              Week of {format(currentWeek, 'MMM d, yyyy')}
+              {format(currentWeek, 'MMM d, yyyy')}
             </h2>
             <p className="text-sm text-gray-600">
               {format(currentWeek, 'MMM d')} - {format(addDays(currentWeek, 6), 'MMM d')}
@@ -362,36 +501,32 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
         <div className="flex items-center space-x-2">
           <button
             onClick={copyCurrentWeek}
-            className="btn-secondary flex items-center"
+            className="btn-secondary flex items-center text-sm px-3 py-2"
           >
-            <Copy className="h-4 w-4 mr-2" />
+            <Copy className="h-4 w-4 mr-1" />
             Copy Week
           </button>
           
           <button
             onClick={pasteWeek}
             disabled={!copiedWeek}
-            className="btn-secondary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-secondary flex items-center text-sm px-3 py-2 disabled:opacity-50"
           >
-            <Clipboard className="h-4 w-4 mr-2" />
+            <Clipboard className="h-4 w-4 mr-1" />
             Paste Week
           </button>
         </div>
       </div>
 
       {/* Week Statistics */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Week Progress</h3>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-primary-600">{stats.percentage}%</div>
-            <div className="text-sm text-gray-600">{stats.completedTasks}/{stats.totalTasks} tasks</div>
-          </div>
+      <div className="card mb-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Progress: {stats.percentage}%</h3>
+          <div className="text-sm text-gray-600">{stats.completedTasks}/{stats.totalTasks} tasks</div>
         </div>
-        
-        <div className="w-full bg-gray-200 rounded-full h-3">
+        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
           <div
-            className="bg-primary-600 h-3 rounded-full transition-all duration-300"
+            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
             style={{ width: `${stats.percentage}%` }}
           />
         </div>
@@ -409,7 +544,7 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
             return (
               <div 
                 key={day} 
-                className={`border rounded-lg overflow-hidden ${
+                className={`border rounded-lg ${
                   todayHighlight ? 'border-green-400 ring-2 ring-green-200' : 'border-gray-200'
                 }`}
               >
@@ -429,6 +564,26 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                     <span className="text-xs text-gray-500">
                       {dayTasks.filter(t => t.completed).length}/{dayTasks.length} completed
                     </span>
+                    
+                    {/* Copy day button */}
+                    <button
+                      onClick={() => copyDay(day)}
+                      className="p-1 text-xs bg-blue-100 text-blue-600 hover:bg-blue-200 rounded"
+                      title={`Copy ${day} tasks`}
+                    >
+                      📋
+                    </button>
+                    
+                    {/* Paste day button */}
+                    <button
+                      onClick={() => pasteDay(day)}
+                      disabled={!copiedDay}
+                      className="p-1 text-xs bg-green-100 text-green-600 hover:bg-green-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={`Paste tasks to ${day}`}
+                    >
+                      📥
+                    </button>
+                    
                     <select
                       onChange={(e) => {
                         if (e.target.value) {
@@ -449,8 +604,8 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                   </div>
                 </div>
 
-                {/* Tasks List */}
-                <div className="p-3 space-y-2">
+                {/* Tasks List - Add relative positioning and overflow visible */}
+                <div className="p-3 space-y-2 relative overflow-visible">
                   {dayTasks.length === 0 ? (
                     <p className="text-sm text-gray-500 italic text-center py-4">No tasks planned</p>
                   ) : (
@@ -458,7 +613,7 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                       {dayTasks.map((task) => (
                         <div
                           key={task.id}
-                          className={`p-2 rounded-lg border ${
+                          className={`p-2 rounded-lg border relative ${
                             task.completed 
                               ? 'bg-green-50 border-green-200' 
                               : 'bg-gray-50 border-gray-200'
@@ -490,10 +645,48 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                                   }`}>
                                     {task.category}
                                   </span>
+                                  
+                                  {/* Show workout details */}
+                                  {task.category === 'Workout' && (task.sets || task.reps || task.weight) && (
+                                    <span className="text-xs text-gray-600 bg-blue-50 px-2 py-1 rounded">
+                                      {task.sets && `${task.sets} sets`}
+                                      {task.sets && task.reps && ' × '}
+                                      {task.reps && `${task.reps} reps`}
+                                      {task.weight && ` @ ${task.weight}kg`}
+                                    </span>
+                                  )}
+                                  
+                                  {/* Show nutrition details */}
+                                  {task.category === 'Nutrition' && (task.calories || task.protein) && (
+                                    <span className="text-xs text-gray-600 bg-orange-50 px-2 py-1 rounded">
+                                      {task.calories && `${task.calories} cal`}
+                                      {task.protein && ` • ${task.protein}g protein`}
+                                    </span>
+                                  )}
+                                  
+                                  {/* Show meal type for nutrition */}
+                                  {task.mealType && (
+                                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                      {task.mealType}
+                                    </span>
+                                  )}
                                 </div>
                                 
-                                {task.description && (
-                                  <p className="text-xs text-gray-600 mt-1">{task.description}</p>
+                                {/* Show user notes separately from calculated descriptions */}
+                                {task.notes && task.notes !== task.description && (
+                                  <p className="text-xs text-gray-600 mt-1 italic">
+                                    📝 {task.notes}
+                                  </p>
+                                )}
+                                
+                                {/* Show description only if it's different from calculated workout/nutrition description */}
+                                {task.description && 
+                                 task.description !== task.notes && 
+                                 !task.description.includes(' sets ×') && 
+                                 !task.description.includes(' cal') && (
+                                  <p className="text-xs text-gray-600 mt-1 italic">
+                                    {task.description}
+                                  </p>
                                 )}
                               </div>
                             </div>
@@ -509,10 +702,21 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                                 </button>
                                 
                                 {showMoveDropdown === task.id && (
-                                  <div className="absolute right-0 top-6 z-50 bg-white border border-gray-200 rounded-md shadow-lg min-w-[120px]">
+                                  <div className="fixed bg-white border border-gray-200 rounded-md shadow-lg min-w-[120px] z-[9999]"
+                                       style={{
+                                         top: `${window.scrollY + 100}px`,
+                                         left: '50%',
+                                         transform: 'translateX(-50%)'
+                                       }}>
                                     <div className="py-1">
-                                      <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100">
+                                      <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100 flex justify-between items-center">
                                         Move to:
+                                        <button
+                                          onClick={() => setShowMoveDropdown(null)}
+                                          className="text-gray-400 hover:text-gray-600"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
                                       </div>
                                       {daysOfWeek.filter(d => d !== day).map((targetDay) => (
                                         <button
@@ -547,8 +751,19 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                               </button>
                               
                               <button
+                                onClick={() => editTask(day, task.id)}
+                                className="text-gray-400 hover:text-blue-600"
+                                title="Edit task"
+                              >
+                                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              
+                              <button
                                 onClick={() => removeTask(day, task.id)}
                                 className="text-gray-400 hover:text-red-600"
+                                title="Delete task"
                               >
                                 <X className="h-3 w-3" />
                               </button>
@@ -571,9 +786,10 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-screen overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">
-                {modalType === 'workout' ? 'Add Workout' : 
-                 modalType === 'nutrition' ? 'Add Meal' : 
-                 `Add Task for ${selectedDay}`}
+                {editingTask ? 'Edit ' : 'Add '}
+                {modalType === 'workout' ? 'Workout' : 
+                 modalType === 'nutrition' ? 'Meal' : 
+                 `Task${selectedDay ? ` for ${selectedDay}` : ''}`}
               </h3>
               <button
                 onClick={() => {
@@ -581,6 +797,7 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                   setSelectedDay(null);
                   setSelectedCategory(null);
                   setModalType('basic');
+                  setEditingTask(null);
                   reset();
                 }}
                 className="text-gray-400 hover:text-gray-600"
@@ -990,9 +1207,10 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                   type="submit"
                   className="flex-1 btn-primary"
                 >
-                  {modalType === 'workout' ? 'Add Workout' :
-                   modalType === 'nutrition' ? 'Add Meal' : 
-                   'Add Task'}
+                  {editingTask ? 'Update ' : 'Add '}
+                  {modalType === 'workout' ? 'Workout' :
+                   modalType === 'nutrition' ? 'Meal' : 
+                   'Task'}
                 </button>
                 <button
                   type="button"
@@ -1001,6 +1219,7 @@ const WeeklySchedule = ({ userId, onUpdateSchedule }) => {
                     setSelectedDay(null);
                     setSelectedCategory(null);
                     setModalType('basic');
+                    setEditingTask(null);
                     reset();
                   }}
                   className="flex-1 btn-secondary"

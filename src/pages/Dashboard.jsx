@@ -133,13 +133,24 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
       const todayName = format(today, 'EEEE');
       const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
       
-      const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
-      if (!savedSchedule) {
+      // Get the schedule from Firebase only
+      let weeklyTasks = {};
+      try {
+        const weekScheduleDoc = await getDoc(doc(db, 'users', user.uid, 'schedules', weekKey));
+        if (weekScheduleDoc.exists()) {
+          weeklyTasks = weekScheduleDoc.data();
+        }
+      } catch (error) {
+        console.error('Error loading schedule from Firebase:', error);
         syncInProgress.current = false;
         return;
       }
       
-      const weeklyTasks = JSON.parse(savedSchedule);
+      if (!weeklyTasks || Object.keys(weeklyTasks).length === 0) {
+        syncInProgress.current = false;
+        return;
+      }
+      
       const todayTasks = weeklyTasks[todayName] || [];
       
       // Simple workout sync - only manually created schedule tasks
@@ -257,8 +268,17 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     
     try {
-      const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
-      let weeklyTasks = savedSchedule ? JSON.parse(savedSchedule) : {};
+      // Load existing schedule from Firebase only
+      let weeklyTasks = {};
+      try {
+        const weekScheduleDoc = await getDoc(doc(db, 'users', user.uid, 'schedules', weekKey));
+        if (weekScheduleDoc.exists()) {
+          weeklyTasks = weekScheduleDoc.data();
+        }
+      } catch (error) {
+        console.error('Error loading schedule from Firebase:', error);
+        return;
+      }
       
       if (!weeklyTasks[todayName]) {
         weeklyTasks[todayName] = [];
@@ -281,7 +301,8 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         });
       });
       
-      localStorage.setItem(`schedule_${user.uid}_${weekKey}`, JSON.stringify(weeklyTasks));
+      // Save to Firebase only
+      await setDoc(doc(db, 'users', user.uid, 'schedules', weekKey), weeklyTasks);
     } catch (error) {
       console.error('Error syncing workout with schedule:', error);
     }
@@ -296,8 +317,17 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
     const weekKey = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     
     try {
-      const savedSchedule = localStorage.getItem(`schedule_${user.uid}_${weekKey}`);
-      let weeklyTasks = savedSchedule ? JSON.parse(savedSchedule) : {};
+      // Load existing schedule from Firebase only
+      let weeklyTasks = {};
+      try {
+        const weekScheduleDoc = await getDoc(doc(db, 'users', user.uid, 'schedules', weekKey));
+        if (weekScheduleDoc.exists()) {
+          weeklyTasks = weekScheduleDoc.data();
+        }
+      } catch (error) {
+        console.error('Error loading schedule from Firebase:', error);
+        return;
+      }
       
       if (!weeklyTasks[todayName]) {
         weeklyTasks[todayName] = [];
@@ -321,7 +351,8 @@ const Dashboard = ({ defaultTab = 'overview' }) => {
         });
       });
       
-      localStorage.setItem(`schedule_${user.uid}_${weekKey}`, JSON.stringify(weeklyTasks));
+      // Save to Firebase only
+      await setDoc(doc(db, 'users', user.uid, 'schedules', weekKey), weeklyTasks);
     } catch (error) {
       console.error('Error syncing nutrition with schedule:', error);
     }
