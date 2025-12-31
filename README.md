@@ -2,7 +2,7 @@
 
 FitTrackAI is a comprehensive web-based fitness and nutrition tracking application designed to help users achieve a gym physique with defined abs, strong shoulders, and arms. This offers seamless authentication, detailed progress tracking, and AI-powered insights.
 
-![FitTrackAI Landing Page](https://via.placeholder.com/800x400/3b82f6/ffffff?text=FitTrackAI)
+[![FitTrackAI Landing Page](https://img.shields.io/badge/Live%20Demo-Visit%20Site-success?style=for-the-badge&logo=netlify)](https://fit-track-ai.netlify.app/)
 
 ## 🎯 Purpose
 
