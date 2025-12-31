@@ -76,18 +76,24 @@ Empowers users to:
    npm install
    ```
 
-3. **Configure Firebase**
+3. **Configure Firebase and AI**
    Create a `.env` file in the root directory:
    ```env
-   REACT_APP_FIREBASE_API_KEY=your_api_key
-   REACT_APP_FIREBASE_AUTH_DOMAIN=your_auth_domain
-   REACT_APP_FIREBASE_PROJECT_ID=your_project_id
-   REACT_APP_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-   REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-   REACT_APP_FIREBASE_APP_ID=your_app_id
+   # Firebase Configuration
+   VITE_FIREBASE_API_KEY=your_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+   VITE_FIREBASE_PROJECT_ID=your_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   
+   # DeepSeek AI API (Optional - for AI-powered weekly analysis)
+   VITE_DEEPSEEK_API_KEY=your_deepseek_api_key
    ```
    
-   **Note**: You only need Authentication and Firestore enabled in Firebase (both free). Storage bucket URL is required in config but we don't use Firebase Storage.
+   **Note**: 
+   - You only need Authentication and Firestore enabled in Firebase (both free). Storage bucket URL is required in config but we don't use Firebase Storage.
+   - DeepSeek API key is optional - the app will work without it but AI analysis features will be disabled.
 
 4. **Start the development server**
    ```bash
