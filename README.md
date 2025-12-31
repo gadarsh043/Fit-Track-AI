@@ -76,8 +76,12 @@ Empowers users to:
    npm install
    ```
 
-3. **Configure Firebase and AI**
-   Create a `.env` file in the root directory:
+3. **Configure Environment Variables**
+   
+   **For Local Development:**
+   - Copy `.env.example` to `.env`: `cp .env.example .env`
+   - Fill in your actual API keys in the `.env` file
+   
    ```env
    # Firebase Configuration
    VITE_FIREBASE_API_KEY=your_api_key
@@ -91,9 +95,24 @@ Empowers users to:
    VITE_DEEPSEEK_API_KEY=your_deepseek_api_key
    ```
    
-   **Note**: 
-   - You only need Authentication and Firestore enabled in Firebase (both free). Storage bucket URL is required in config but we don't use Firebase Storage.
-   - DeepSeek API key is optional - the app will work without it but AI analysis features will be disabled.
+   **For Netlify Deployment:**
+   1. Go to your Netlify dashboard → Site settings → Environment variables
+   2. Add each environment variable:
+      - `VITE_FIREBASE_API_KEY` = your_firebase_api_key
+      - `VITE_FIREBASE_AUTH_DOMAIN` = your_auth_domain
+      - `VITE_FIREBASE_PROJECT_ID` = your_project_id
+      - `VITE_FIREBASE_STORAGE_BUCKET` = your_storage_bucket
+      - `VITE_FIREBASE_MESSAGING_SENDER_ID` = your_sender_id
+      - `VITE_FIREBASE_APP_ID` = your_app_id
+      - `VITE_DEEPSEEK_API_KEY` = your_deepseek_api_key (optional)
+   3. Click "Save" and trigger a new deploy
+   
+   **⚠️ Important Security Notes:**
+   - ✅ `.env` file is already in `.gitignore` - never commit API keys!
+   - ✅ Use Netlify's environment variables for production (keeps secrets secure)
+   - ✅ The `.env.example` file is safe to commit (contains no real keys)
+   - You only need Authentication and Firestore enabled in Firebase (both free)
+   - DeepSeek API key is optional - the app will work without it but AI analysis features will be disabled
 
 4. **Start the development server**
    ```bash
@@ -238,9 +257,27 @@ npm run preview      # Preview production build
 
 The application can be deployed to various platforms:
 
-- **Vercel**: `npm run build` and deploy the `dist` folder
-- **Netlify**: Connect your repository and set build command to `npm run build`
-- **Firebase Hosting**: Use Firebase CLI to deploy
+### Netlify (Recommended)
+1. Connect your GitHub repository to Netlify
+2. Set build command: `npm run build`
+3. Set publish directory: `dist`
+4. **Add environment variables** in Netlify dashboard (Site settings → Environment variables):
+   - All `VITE_*` variables from your `.env` file
+   - See step 3 above for the complete list
+5. Deploy! Netlify will automatically rebuild on every push
+
+### Vercel
+1. Connect your repository
+2. Set build command: `npm run build`
+3. Add environment variables in Vercel dashboard (Settings → Environment Variables)
+4. Deploy
+
+### Firebase Hosting
+1. Install Firebase CLI: `npm install -g firebase-tools`
+2. Login: `firebase login`
+3. Initialize: `firebase init hosting`
+4. Build: `npm run build`
+5. Deploy: `firebase deploy`
 
 ## 🎯 Fitness Goals Example
 
